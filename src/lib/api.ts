@@ -5,6 +5,7 @@ import {
   Equipment,
   ServiceCatalogItem,
   Appointment,
+  AppointmentStatus,
   ServiceOrder,
   CompanySettings,
   Quote,
@@ -359,13 +360,14 @@ export async function createAppointment(payload: {
   estimated_duration_min?: number;
   technician_name?: string;
   notes?: string;
+  status?: AppointmentStatus;
 }): Promise<Appointment | null> {
   const { data, error } = await supabase
     .from('mg_appointments')
     .insert([
       {
         ...payload,
-        status: 'scheduled',
+        status: payload.status || 'confirmed',
       },
     ])
     .select()

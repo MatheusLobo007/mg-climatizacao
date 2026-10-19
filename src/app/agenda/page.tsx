@@ -214,6 +214,23 @@ export default function AgendaPage() {
                     </a>
                   )}
 
+                  {/* Seletor rápido de Status */}
+                  <select
+                    value={app.status}
+                    onChange={(e) => handleStatusChange(app.id, e.target.value)}
+                    className="text-xs font-semibold py-2 px-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-[#0754D8]"
+                    title="Alterar status do atendimento"
+                  >
+                    <option value="confirmed">Confirmado</option>
+                    <option value="awaiting_confirmation">Aguardando Confirmação</option>
+                    <option value="requested">Solicitado</option>
+                    <option value="in_transit">Em Deslocamento</option>
+                    <option value="in_progress">Em Atendimento</option>
+                    <option value="completed">Concluído</option>
+                    <option value="cancelled">Cancelado</option>
+                    <option value="missed">Não Realizado</option>
+                  </select>
+
                   {/* Converter em O.S. Direta */}
                   <Link
                     href={`/ordens/nova?customerId=${app.customer_id}&appointmentId=${app.id}&category=${app.category}`}

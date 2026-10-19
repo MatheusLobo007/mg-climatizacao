@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getCustomers, createAppointment } from '@/lib/api';
-import { Customer, ServiceCategory } from '@/lib/types';
+import { Customer, ServiceCategory, AppointmentStatus } from '@/lib/types';
 
 function NovoAgendamentoContent() {
   const router = useRouter();
@@ -32,6 +32,7 @@ function NovoAgendamentoContent() {
   const [addressId, setAddressId] = useState('');
   const [equipmentId, setEquipmentId] = useState('');
   const [category, setCategory] = useState<ServiceCategory>('climatizacao');
+  const [status, setStatus] = useState<AppointmentStatus>('confirmed');
   const [title, setTitle] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('09:00');
@@ -83,6 +84,7 @@ function NovoAgendamentoContent() {
         address_id: addressId || undefined,
         equipment_id: equipmentId || undefined,
         category,
+        status,
         title: title.trim(),
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime,
@@ -285,17 +287,34 @@ function NovoAgendamentoContent() {
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">
-            Técnico Responsável
-          </label>
-          <input
-            type="text"
-            value={technicianName}
-            onChange={(e) => setTechnicianName(e.target.value)}
-            placeholder="Nome do técnico"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Técnico Responsável
+            </label>
+            <input
+              type="text"
+              value={technicianName}
+              onChange={(e) => setTechnicianName(e.target.value)}
+              placeholder="Nome do técnico"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Status Inicial
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as AppointmentStatus)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
+            >
+              <option value="confirmed">Confirmado</option>
+              <option value="awaiting_confirmation">Aguardando Confirmação</option>
+              <option value="requested">Solicitado</option>
+            </select>
+          </div>
         </div>
 
         <div>
