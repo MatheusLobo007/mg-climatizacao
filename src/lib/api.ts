@@ -1771,6 +1771,11 @@ export async function deleteCustomer(id: string): Promise<boolean> {
 }
 
 export async function deleteEquipment(id: string): Promise<boolean> {
+  // Limpar lembretes de higienização vinculados ao equipamento
+  await supabase.from('mg_maintenance_reminders').delete().eq('equipment_id', id);
+  // Limpar vínculos de planos PMOC vinculados a este equipamento
+  await supabase.from('mg_pmoc_equipment').delete().eq('equipment_id', id);
+
   const { error } = await supabase.from('mg_equipment').delete().eq('id', id);
   if (error) {
     console.error('Erro ao excluir equipamento:', error);
