@@ -536,78 +536,98 @@ export default function FinanceiroPage() {
             )}
           </div>
 
-          {/* Gráfico 2: Despesas por Categoria & Lucratividade */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-[#103778] mb-3 flex items-center gap-2">
+          {/* Gráfico 2: Despesas por Categoria & Rentabilidade */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-start gap-4">
+            {/* Header com totalizador */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
                 <Layers className="w-4 h-4 text-[#0754D8]" />
                 <span>Distribuição de Despesas</span>
               </h3>
+              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-lg">
+                Total: {formatCurrency(periodSummary.totalExpense)}
+              </span>
+            </div>
 
-              {Object.keys(periodSummary.categoryExpenses).length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-xs">
-                  Nenhuma despesa paga neste período.
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {Object.entries(periodSummary.categoryExpenses)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 5)
-                    .map(([cat, amount]) => {
-                      const info = categoryLabels[cat as FinancialCategory] || {
-                        label: cat,
-                        icon: FileText,
-                        color: 'bg-slate-500',
-                      };
-                      const Icon = info.icon;
-                      const pct = periodSummary.totalExpense > 0
+            {/* Lista de Categorias de Despesas */}
+            {Object.keys(periodSummary.categoryExpenses).length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                Nenhuma despesa registrada neste período.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(periodSummary.categoryExpenses)
+                  .sort(([, a], [, b]) => b - a)
+                  .slice(0, 4)
+                  .map(([cat, amount]) => {
+                    const info = categoryLabels[cat as FinancialCategory] || {
+                      label: cat,
+                      icon: FileText,
+                      color: 'bg-slate-500',
+                    };
+                    const Icon = info.icon;
+                    const pct =
+                      periodSummary.totalExpense > 0
                         ? Math.round((amount / periodSummary.totalExpense) * 100)
                         : 0;
 
-                      return (
-                        <div key={cat} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
-                              <Icon className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="truncate max-w-[130px]">{info.label}</span>
+                    return (
+                      <div
+                        key={cat}
+                        className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 space-y-1.5 hover:border-slate-200 transition-colors"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 text-slate-700 font-medium">
+                            <Icon className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="truncate max-w-[150px] font-semibold">{info.label}</span>
+                          </span>
+                          <span className="font-bold text-slate-800">
+                            {formatCurrency(amount)}{' '}
+                            <span className="text-[10px] text-slate-500 font-medium bg-white px-1.5 py-0.5 rounded-md border border-slate-200">
+                              {pct}%
                             </span>
-                            <span className="font-bold text-slate-800">
-                              {formatCurrency(amount)} <span className="text-[10px] text-slate-400 font-normal">({pct}%)</span>
-                            </span>
-                          </div>
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${info.color}`}
-                              style={{ width: `${pct}%` }}
-                            ></div>
-                          </div>
+                          </span>
                         </div>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
+                        <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${info.color}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
 
-            {/* Termômetro de Margem de Lucro */}
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="font-semibold text-slate-500 flex items-center gap-1">
+            {/* Painel de Saúde Financeira & Margem Líquida */}
+            <div className="mt-auto p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-[#103778] flex items-center gap-1.5">
                   <Percent className="w-3.5 h-3.5 text-[#0754D8]" />
                   <span>Margem Líquida</span>
                 </span>
                 <span
-                  className={`font-extrabold ${
+                  className={`text-xs font-extrabold px-2 py-0.5 rounded-md ${
                     periodSummary.profitMargin >= 40
-                      ? 'text-emerald-700'
+                      ? 'text-emerald-700 bg-emerald-100/80'
                       : periodSummary.profitMargin >= 15
-                      ? 'text-blue-700'
-                      : 'text-amber-700'
+                      ? 'text-blue-700 bg-blue-100/80'
+                      : 'text-amber-700 bg-amber-100/80'
                   }`}
                 >
-                  {periodSummary.profitMargin}%
+                  {periodSummary.profitMargin}%{' '}
+                  <span className="font-semibold text-[11px]">
+                    {periodSummary.profitMargin >= 40
+                      ? '• Lucro Alto'
+                      : periodSummary.profitMargin >= 15
+                      ? '• Saudável'
+                      : '• Atenção'}
+                  </span>
                 </span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+
+              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
                     periodSummary.profitMargin >= 40
@@ -617,7 +637,12 @@ export default function FinanceiroPage() {
                       : 'bg-amber-500'
                   }`}
                   style={{ width: `${Math.max(Math.min(periodSummary.profitMargin, 100), 0)}%` }}
-                ></div>
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                <span>Receita: {formatCurrency(periodSummary.totalIncome)}</span>
+                <span>Líquido: {formatCurrency(periodSummary.netBalance)}</span>
               </div>
             </div>
           </div>
