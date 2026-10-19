@@ -220,6 +220,16 @@ function OrdemDetalheContent() {
 
   return (
     <AppLayout>
+      {/* CABEÇALHO FORMAL PARA IMPRESSÃO */}
+      <div className="hidden print:flex items-center justify-between pb-6 mb-6 border-b border-slate-300">
+        <LogoMG size="md" />
+        <div className="text-right text-xs text-slate-600">
+          <p className="font-bold text-sm text-[#103778]">{company?.name || 'MG Climatização'}</p>
+          <p>{company?.slogan || 'Refrigeração, Climatização e Elétrica Residencial'}</p>
+          <p>Manaus - AM • Telefone: (92) 99123-4567</p>
+        </div>
+      </div>
+
       {/* CABEÇALHO DA O.S. */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
