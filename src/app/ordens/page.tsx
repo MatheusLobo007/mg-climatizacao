@@ -13,9 +13,10 @@ import {
   AlertTriangle,
   ChevronRight,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getServiceOrders } from '@/lib/api';
+import { getServiceOrders, deleteServiceOrder } from '@/lib/api';
 import { ServiceOrder } from '@/lib/types';
 import {
   formatDate,
@@ -28,6 +29,8 @@ export default function OrdensPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [itemToDelete, setItemToDelete] = useState<ServiceOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadData() {
     try {
@@ -38,6 +41,20 @@ export default function OrdensPage() {
       console.error('Erro ao buscar ordens de serviço:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!itemToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteServiceOrder(itemToDelete.id);
+      setOrders((prev) => prev.filter((o) => o.id !== itemToDelete.id));
+      setItemToDelete(null);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir ordem de serviço.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -225,10 +242,24 @@ export default function OrdensPage() {
                     </span>
                   </div>
 
-                  <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1">
-                    <span>Ver Ordem</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setItemToDelete(ord);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Excluir O.S."
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1">
+                      <span>Ver Ordem</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </div>
                 </div>
               </Link>
             );
@@ -248,6 +279,55 @@ export default function OrdensPage() {
             <Plus className="w-4 h-4" />
             <span>Criar Primeira O.S.</span>
           </Link>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4 mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-slate-800 text-center">
+              Excluir Ordem de Serviço?
+            </h3>
+            <p className="text-sm text-slate-500 text-center mt-2">
+              Tem certeza que deseja excluir permanentemente a O.S.{' '}
+              <span className="font-mono font-bold text-[#0754D8]">{itemToDelete.code}</span> do cliente{' '}
+              <strong className="text-slate-700">{itemToDelete.customer?.name}</strong>?
+            </p>
+            <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 mt-3 text-center">
+              Aviso: Itens vinculados, checklists, fotos e lançamentos financeiros desta O.S. serão removidos.
+            </p>
+
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                {deleting ? (
+                  <span>Excluindo...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Confirmar Exclusão</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppLayout>

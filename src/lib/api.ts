@@ -1824,3 +1824,16 @@ export async function deletePMOCPlan(id: string): Promise<boolean> {
   return true;
 }
 
+export async function deleteServiceOrder(id: string): Promise<boolean> {
+  // Desvincula/remove transações financeiras vinculadas à O.S. para manter integridade
+  await supabase.from('mg_financial_transactions').delete().eq('service_order_id', id);
+
+  const { error } = await supabase.from('mg_service_orders').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir ordem de serviço:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+
