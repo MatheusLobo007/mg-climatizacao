@@ -18,12 +18,14 @@ import {
   FileText,
   X,
   MessageCircle,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
   getWarrantyTerms,
   getServiceOrders,
   createWarrantyTerm,
+  deleteWarrantyTerm,
 } from '@/lib/api';
 import { WarrantyTerm, WarrantyType, ServiceOrder } from '@/lib/types';
 import { formatDate } from '@/lib/formatters';
@@ -38,6 +40,25 @@ export default function GarantiasPage() {
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
+
+  // Exclusão
+  const [itemToDelete, setItemToDelete] = useState<WarrantyTerm | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteWarrantyTerm(itemToDelete.id);
+      setItemToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir garantia:', err);
+      alert(err.message || 'Erro ao excluir termo de garantia.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const [formData, setFormData] = useState<{
     service_order_id: string;
@@ -255,6 +276,13 @@ export default function GarantiasPage() {
                       <Printer className="w-3.5 h-3.5" />
                       <span>Ver Certificado Timbrado</span>
                     </Link>
+                    <button
+                      onClick={() => setItemToDelete(term)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir certificado de garantia"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               );
@@ -385,6 +413,45 @@ export default function GarantiasPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+        {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+        {itemToDelete && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3 text-red-600 mb-3">
+                <div className="p-3 bg-red-50 rounded-xl">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Excluir Certificado de Garantia</h3>
+                  <p className="text-xs text-slate-500">Esta ação não poderá ser desfeita</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 my-4">
+                Tem certeza que deseja excluir o termo de garantia <strong className="text-slate-900">{itemToDelete.code}</strong> do cliente <strong className="text-slate-900">{itemToDelete.customer?.name}</strong>?
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setItemToDelete(null)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+                >
+                  {deleting ? 'Excluindo...' : 'Sim, Excluir'}
+                </button>
+              </div>
             </div>
           </div>
         )}

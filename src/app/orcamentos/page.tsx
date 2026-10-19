@@ -15,9 +15,10 @@ import {
   Filter,
   ArrowRight,
   DollarSign,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getQuotes } from '@/lib/api';
+import { getQuotes, deleteQuote } from '@/lib/api';
 import { Quote } from '@/lib/types';
 import {
   formatDate,
@@ -30,6 +31,23 @@ export default function OrcamentosPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [itemToDelete, setItemToDelete] = useState<Quote | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteQuote(itemToDelete.id);
+      setItemToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir orçamento:', err);
+      alert(err.message || 'Erro ao excluir orçamento.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   async function loadData() {
     try {
@@ -210,10 +228,24 @@ export default function OrcamentosPage() {
                     )}
                   </div>
 
-                  <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1">
-                    <span>Ver Proposta</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1">
+                      <span>Ver Proposta</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setItemToDelete(q);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir orçamento"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </Link>
             );
@@ -233,6 +265,46 @@ export default function OrcamentosPage() {
             <Plus className="w-4 h-4" />
             <span>Criar Primeiro Orçamento</span>
           </Link>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Excluir Orçamento</h3>
+                <p className="text-xs text-slate-500">Esta ação não poderá ser desfeita</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 my-4">
+              Tem certeza que deseja excluir o orçamento <strong className="text-slate-900">{itemToDelete.code}</strong> do cliente <strong className="text-slate-900">{itemToDelete.customer?.name}</strong> no valor de <strong className="text-slate-900">{formatCurrency(itemToDelete.total_amount)}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+              >
+                {deleting ? 'Excluindo...' : 'Sim, Excluir'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppLayout>

@@ -13,9 +13,10 @@ import {
   Clock,
   Wrench,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getEquipment } from '@/lib/api';
+import { getEquipment, deleteEquipment } from '@/lib/api';
 import { Equipment } from '@/lib/types';
 import {
   formatDate,
@@ -29,6 +30,23 @@ export default function EquipamentosPage() {
   const [loading, setLoading] = useState(true);
   const [filterUrgency, setFilterUrgency] = useState<'all' | 'overdue' | 'soon' | 'ok'>('all');
   const [search, setSearch] = useState('');
+  const [itemToDelete, setItemToDelete] = useState<Equipment | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteEquipment(itemToDelete.id);
+      setItemToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir equipamento:', err);
+      alert(err.message || 'Erro ao excluir equipamento.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   async function loadData() {
     try {
@@ -240,13 +258,23 @@ export default function EquipamentosPage() {
                     <span className="text-xs text-slate-400 italic">Sem telefone</span>
                   )}
 
-                  <Link
-                    href={`/ordens/nova?customerId=${eq.customer_id}&equipmentId=${eq.id}`}
-                    className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-[#EAF3FF] text-[#103778] hover:text-[#0754D8] text-xs font-bold py-2 px-3 rounded-xl transition-all"
-                  >
-                    <Wrench className="w-3.5 h-3.5" />
-                    <span>Nova O.S.</span>
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/ordens/nova?customerId=${eq.customer_id}&equipmentId=${eq.id}`}
+                      className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-[#EAF3FF] text-[#103778] hover:text-[#0754D8] text-xs font-bold py-2 px-3 rounded-xl transition-all"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Nova O.S.</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setItemToDelete(eq)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir ar-condicionado"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -266,6 +294,46 @@ export default function EquipamentosPage() {
             <Plus className="w-4 h-4" />
             <span>Cadastrar Ar-Condicionado</span>
           </Link>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Excluir Ar-Condicionado</h3>
+                <p className="text-xs text-slate-500">Esta ação não poderá ser desfeita</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 my-4">
+              Tem certeza que deseja excluir o aparelho <strong className="text-slate-900">{itemToDelete.environment} ({itemToDelete.brand || 'Split'})</strong> do cliente <strong className="text-slate-900">{itemToDelete.customer?.name}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+              >
+                {deleting ? 'Excluindo...' : 'Sim, Excluir'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppLayout>

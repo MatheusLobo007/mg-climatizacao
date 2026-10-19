@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   DollarSign,
@@ -25,6 +25,8 @@ import {
   AlertCircle,
   Building,
   Trash2,
+  BarChart3,
+  Percent,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -43,16 +45,14 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 
 export default function FinanceiroPage() {
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
-  const [summary, setSummary] = useState<{
-    totalIncome: number;
-    totalExpense: number;
-    netBalance: number;
-    pendingReceivables: number;
-    categoryExpenses: Record<string, number>;
-  } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filtros
+  // Filtros de Período
+  const [periodPreset, setPeriodPreset] = useState<'month' | 'today' | 'week' | 'last30' | 'year' | 'custom' | 'all'>('month');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Filtros de Tipo e Categoria
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -64,6 +64,7 @@ export default function FinanceiroPage() {
   // Modal de Exclusão
   const [itemToDelete, setItemToDelete] = useState<FinancialTransaction | null>(null);
   const [deleting, setDeleting] = useState(false);
+
   const [formData, setFormData] = useState<{
     type: FinancialTransactionType;
     category: FinancialCategory;
@@ -84,15 +85,44 @@ export default function FinanceiroPage() {
     notes: '',
   });
 
+  // Configuração inicial de datas
+  const applyPresetDates = (preset: string) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'week') {
+      const dayOfWeek = now.getDay();
+      const start = new Date(now);
+      start.setDate(now.getDate() - dayOfWeek);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'last30') {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 30);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'year') {
+      const start = new Date(now.getFullYear(), 0, 1);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [trans, sum] = await Promise.all([
-        getFinancialTransactions(),
-        getFinancialSummary(),
-      ]);
+      const trans = await getFinancialTransactions();
       setTransactions(trans);
-      setSummary(sum);
     } catch (err) {
       console.error('Erro ao carregar dados financeiros:', err);
     } finally {
@@ -101,12 +131,18 @@ export default function FinanceiroPage() {
   };
 
   useEffect(() => {
+    applyPresetDates('month');
     setFormData((prev) => ({
       ...prev,
       transaction_date: new Date().toISOString().split('T')[0],
     }));
     loadData();
   }, []);
+
+  const handlePresetClick = (preset: any) => {
+    setPeriodPreset(preset);
+    applyPresetDates(preset);
+  };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,29 +187,108 @@ export default function FinanceiroPage() {
     }
   };
 
-  const categoryLabels: Record<FinancialCategory, { label: string; icon: any }> = {
-    combustivel: { label: 'Combustível / Rota', icon: Fuel },
-    ferramentas: { label: 'Ferramentas & Equipamentos', icon: Wrench },
-    refeicao: { label: 'Alimentação & Refeição', icon: Utensils },
-    insumos: { label: 'Insumos & Peças', icon: Package },
-    servico_os: { label: 'Receita de O.S.', icon: CheckCircle2 },
-    prolabore: { label: 'Pró-Labore / Retirada', icon: DollarSign },
-    aluguel_oficina: { label: 'Oficina / Instalações', icon: Building },
-    energia_agua: { label: 'Energia / Água / Net', icon: Layers },
-    outros: { label: 'Outras Despesas', icon: FileText },
+  const categoryLabels: Record<FinancialCategory, { label: string; icon: any; color: string }> = {
+    combustivel: { label: 'Combustível / Rota', icon: Fuel, color: 'bg-amber-500' },
+    ferramentas: { label: 'Ferramentas & Acessórios', icon: Wrench, color: 'bg-blue-500' },
+    refeicao: { label: 'Alimentação & Refeição', icon: Utensils, color: 'bg-orange-500' },
+    insumos: { label: 'Insumos & Peças', icon: Package, color: 'bg-indigo-500' },
+    servico_os: { label: 'Receita de O.S.', icon: CheckCircle2, color: 'bg-emerald-500' },
+    prolabore: { label: 'Pró-Labore / Retirada', icon: DollarSign, color: 'bg-purple-500' },
+    aluguel_oficina: { label: 'Oficina / Instalações', icon: Building, color: 'bg-slate-500' },
+    energia_agua: { label: 'Energia / Água / Net', icon: Layers, color: 'bg-cyan-500' },
+    outros: { label: 'Outras Operações', icon: FileText, color: 'bg-slate-400' },
   };
 
-  const filteredTransactions = transactions.filter((t) => {
-    if (typeFilter !== 'all' && t.type !== typeFilter) return false;
-    if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const desc = t.description.toLowerCase();
-      const client = t.customer?.name?.toLowerCase() || '';
-      return desc.includes(q) || client.includes(q);
-    }
-    return true;
-  });
+  // Filtragem Dinâmica
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((t) => {
+      // Filtro de Data
+      if (startDate && t.transaction_date < startDate) return false;
+      if (endDate && t.transaction_date > endDate) return false;
+
+      // Filtro de Tipo
+      if (typeFilter !== 'all' && t.type !== typeFilter) return false;
+
+      // Filtro de Categoria
+      if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+
+      // Busca por texto
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const desc = t.description.toLowerCase();
+        const client = t.customer?.name?.toLowerCase() || '';
+        return desc.includes(q) || client.includes(q);
+      }
+      return true;
+    });
+  }, [transactions, startDate, endDate, typeFilter, categoryFilter, search]);
+
+  // Resumo Métrico Dinâmico Calculado a Partir do Período Filtrado
+  const periodSummary = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    let pending = 0;
+    const catExpenses: Record<string, number> = {};
+
+    filteredTransactions.forEach((t) => {
+      const val = Number(t.amount || 0);
+      if (t.type === 'income') {
+        if (t.status === 'paid') {
+          income += val;
+        } else {
+          pending += val;
+        }
+      } else if (t.type === 'expense') {
+        if (t.status === 'paid') {
+          expense += val;
+          catExpenses[t.category] = (catExpenses[t.category] || 0) + val;
+        }
+      }
+    });
+
+    const net = income - expense;
+    const margin = income > 0 ? Math.round((net / income) * 100) : 0;
+
+    return {
+      totalIncome: income,
+      totalExpense: expense,
+      netBalance: net,
+      pendingReceivables: pending,
+      profitMargin: margin,
+      categoryExpenses: catExpenses,
+    };
+  }, [filteredTransactions]);
+
+  // Dados para o Gráfico de Evolução por Dia
+  const chartDailyData = useMemo(() => {
+    const dailyMap: Record<string, { date: string; income: number; expense: number }> = {};
+
+    filteredTransactions.forEach((t) => {
+      const d = t.transaction_date;
+      if (!dailyMap[d]) {
+        dailyMap[d] = { date: d, income: 0, expense: 0 };
+      }
+      const val = Number(t.amount || 0);
+      if (t.type === 'income' && t.status === 'paid') {
+        dailyMap[d].income += val;
+      } else if (t.type === 'expense' && t.status === 'paid') {
+        dailyMap[d].expense += val;
+      }
+    });
+
+    // Ordenar cronologicamente e pegar até os últimos 10 dias com movimentação
+    const sorted = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+    return sorted.slice(-10);
+  }, [filteredTransactions]);
+
+  const maxChartValue = useMemo(() => {
+    if (chartDailyData.length === 0) return 100;
+    const maxVal = Math.max(
+      ...chartDailyData.map((d) => Math.max(d.income, d.expense)),
+      100
+    );
+    return maxVal;
+  }, [chartDailyData]);
 
   return (
     <AppLayout>
@@ -186,7 +301,7 @@ export default function FinanceiroPage() {
               <span>Controle Financeiro & Fluxo de Caixa</span>
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Acompanhamento de receitas de serviços, despesas de rota, compras e lucratividade real
+              Histórico de entradas e saídas, filtros por período e análise de lucratividade
             </p>
           </div>
 
@@ -227,35 +342,94 @@ export default function FinanceiroPage() {
           </div>
         </div>
 
-        {/* METRICS CARDS */}
+        {/* BARRA DE FILTROS DE PERÍODO & ATALHOS */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Atalhos Rápidos */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              {[
+                { id: 'today', label: 'Hoje' },
+                { id: 'week', label: 'Esta Semana' },
+                { id: 'month', label: 'Este Mês' },
+                { id: 'last30', label: 'Últimos 30 Dias' },
+                { id: 'year', label: 'Ano Atual' },
+                { id: 'all', label: 'Todos' },
+                { id: 'custom', label: 'Personalizado' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handlePresetClick(p.id)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all border ${
+                    periodPreset === p.id
+                      ? 'bg-[#103778] text-white border-[#103778] shadow-xs'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Inputs de Data Início / Fim */}
+            <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+                <span className="text-slate-400 font-medium">De:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setPeriodPreset('custom');
+                  }}
+                  className="bg-transparent font-semibold text-slate-700 focus:outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+                <span className="text-slate-400 font-medium">Até:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setPeriodPreset('custom');
+                  }}
+                  className="bg-transparent font-semibold text-slate-700 focus:outline-hidden"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* METRICS CARDS (CALCULADOS NO PERÍODO SELECIONADO) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          {/* Receitas Totais */}
+          {/* Receitas */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-emerald-800">Receitas Recebidas</span>
+              <span className="text-xs font-semibold text-emerald-800">Receitas do Período</span>
               <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
                 <ArrowDownRight className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
               <span className="text-xl sm:text-2xl font-extrabold text-emerald-700">
-                {loading ? '—' : formatCurrency(summary?.totalIncome || 0)}
+                {loading ? '—' : formatCurrency(periodSummary.totalIncome)}
               </span>
-              <p className="text-[11px] text-slate-400 mt-0.5">entradas confirmadas</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">entradas recebidas</p>
             </div>
           </div>
 
-          {/* Despesas Totais */}
+          {/* Despesas */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-red-800">Despesas Pagas</span>
+              <span className="text-xs font-semibold text-red-800">Despesas do Período</span>
               <div className="p-2 rounded-xl bg-red-50 text-red-600">
                 <ArrowUpRight className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
               <span className="text-xl sm:text-2xl font-extrabold text-red-700">
-                {loading ? '—' : formatCurrency(summary?.totalExpense || 0)}
+                {loading ? '—' : formatCurrency(periodSummary.totalExpense)}
               </span>
               <p className="text-[11px] text-slate-400 mt-0.5">combustível, peças, rotas</p>
             </div>
@@ -264,7 +438,7 @@ export default function FinanceiroPage() {
           {/* Saldo Líquido */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold text-[#103778]">Saldo em Caixa</span>
+              <span className="text-xs font-semibold text-[#103778]">Saldo Líquido</span>
               <div className="p-2 rounded-xl bg-[#EAF3FF] text-[#0754D8]">
                 <DollarSign className="w-4 h-4" />
               </div>
@@ -272,12 +446,14 @@ export default function FinanceiroPage() {
             <div className="mt-3">
               <span
                 className={`text-xl sm:text-2xl font-extrabold ${
-                  (summary?.netBalance || 0) >= 0 ? 'text-[#103778]' : 'text-red-600'
+                  periodSummary.netBalance >= 0 ? 'text-[#103778]' : 'text-red-600'
                 }`}
               >
-                {loading ? '—' : formatCurrency(summary?.netBalance || 0)}
+                {loading ? '—' : formatCurrency(periodSummary.netBalance)}
               </span>
-              <p className="text-[11px] text-slate-400 mt-0.5">receitas - despesas</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {periodSummary.profitMargin}% margem de lucro
+              </p>
             </div>
           </div>
 
@@ -291,43 +467,163 @@ export default function FinanceiroPage() {
             </div>
             <div className="mt-3">
               <span className="text-xl sm:text-2xl font-extrabold text-amber-800">
-                {loading ? '—' : formatCurrency(summary?.pendingReceivables || 0)}
+                {loading ? '—' : formatCurrency(periodSummary.pendingReceivables)}
               </span>
               <p className="text-[11px] text-slate-400 mt-0.5">valores pendentes de O.S.</p>
             </div>
           </div>
         </div>
 
-        {/* DISTRIBUIÇÃO DE DESPESAS POR CATEGORIA */}
-        {summary?.categoryExpenses && Object.keys(summary.categoryExpenses).length > 0 && (
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
-            <h3 className="text-sm font-bold text-[#103778] mb-3 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-[#0754D8]" />
-              <span>Despesas por Categoria</span>
-            </h3>
+        {/* SEÇÃO GRÁFICA VISUAL */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Gráfico 1: Evolução Diária (Barras Comparativas) */}
+          <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-[#0754D8]" />
+                <span>Evolução do Fluxo de Caixa (Receitas vs Despesas)</span>
+              </h3>
+              <div className="flex items-center gap-3 text-[11px] font-semibold">
+                <span className="flex items-center gap-1.5 text-emerald-700">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 block"></span>
+                  Receitas
+                </span>
+                <span className="flex items-center gap-1.5 text-red-600">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-red-500 block"></span>
+                  Despesas
+                </span>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              {Object.entries(summary.categoryExpenses).map(([cat, amount]) => {
-                const info = categoryLabels[cat as FinancialCategory] || {
-                  label: cat,
-                  icon: FileText,
-                };
-                const Icon = info.icon;
-                return (
-                  <div key={cat} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center gap-2 text-slate-500 mb-1">
-                      <Icon className="w-3.5 h-3.5 text-slate-600" />
-                      <span className="truncate font-medium">{info.label}</span>
-                    </div>
-                    <p className="font-bold text-sm text-slate-800">{formatCurrency(amount)}</p>
-                  </div>
-                );
-              })}
+            {chartDailyData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-slate-400 text-xs">
+                Nenhum lançamento no período para compor o gráfico.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="h-44 flex items-end justify-between gap-2 pt-6 pb-2 border-b border-slate-100">
+                  {chartDailyData.map((d) => {
+                    const incHeight = Math.max(Math.round((d.income / maxChartValue) * 100), 4);
+                    const expHeight = Math.max(Math.round((d.expense / maxChartValue) * 100), 4);
+                    const dayLabel = d.date.split('-').slice(1).reverse().join('/');
+
+                    return (
+                      <div key={d.date} className="flex-1 flex flex-col items-center h-full justify-end group">
+                        {/* Barras Lado a Lado */}
+                        <div className="w-full flex items-end justify-center gap-1 h-36">
+                          {/* Barra de Receita */}
+                          <div
+                            style={{ height: `${incHeight}%` }}
+                            className="w-1/2 max-w-[20px] bg-emerald-500 hover:bg-emerald-600 rounded-t-sm transition-all relative cursor-pointer"
+                            title={`Receita em ${formatDate(d.date)}: ${formatCurrency(d.income)}`}
+                          ></div>
+                          {/* Barra de Despesa */}
+                          <div
+                            style={{ height: `${expHeight}%` }}
+                            className="w-1/2 max-w-[20px] bg-red-500 hover:bg-red-600 rounded-t-sm transition-all relative cursor-pointer"
+                            title={`Despesa em ${formatDate(d.date)}: ${formatCurrency(d.expense)}`}
+                          ></div>
+                        </div>
+                        {/* Data */}
+                        <span className="text-[10px] text-slate-400 mt-2 font-mono group-hover:text-slate-800 transition-colors">
+                          {dayLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Gráfico 2: Despesas por Categoria & Lucratividade */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-[#103778] mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#0754D8]" />
+                <span>Distribuição de Despesas</span>
+              </h3>
+
+              {Object.keys(periodSummary.categoryExpenses).length === 0 ? (
+                <div className="py-10 text-center text-slate-400 text-xs">
+                  Nenhuma despesa paga neste período.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {Object.entries(periodSummary.categoryExpenses)
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 5)
+                    .map(([cat, amount]) => {
+                      const info = categoryLabels[cat as FinancialCategory] || {
+                        label: cat,
+                        icon: FileText,
+                        color: 'bg-slate-500',
+                      };
+                      const Icon = info.icon;
+                      const pct = periodSummary.totalExpense > 0
+                        ? Math.round((amount / periodSummary.totalExpense) * 100)
+                        : 0;
+
+                      return (
+                        <div key={cat} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
+                              <Icon className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="truncate max-w-[130px]">{info.label}</span>
+                            </span>
+                            <span className="font-bold text-slate-800">
+                              {formatCurrency(amount)} <span className="text-[10px] text-slate-400 font-normal">({pct}%)</span>
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${info.color}`}
+                              style={{ width: `${pct}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Termômetro de Margem de Lucro */}
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="font-semibold text-slate-500 flex items-center gap-1">
+                  <Percent className="w-3.5 h-3.5 text-[#0754D8]" />
+                  <span>Margem Líquida</span>
+                </span>
+                <span
+                  className={`font-extrabold ${
+                    periodSummary.profitMargin >= 40
+                      ? 'text-emerald-700'
+                      : periodSummary.profitMargin >= 15
+                      ? 'text-blue-700'
+                      : 'text-amber-700'
+                  }`}
+                >
+                  {periodSummary.profitMargin}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    periodSummary.profitMargin >= 40
+                      ? 'bg-emerald-500'
+                      : periodSummary.profitMargin >= 15
+                      ? 'bg-[#0754D8]'
+                      : 'bg-amber-500'
+                  }`}
+                  style={{ width: `${Math.max(Math.min(periodSummary.profitMargin, 100), 0)}%` }}
+                ></div>
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* FILTROS E BUSCA */}
+        {/* FILTROS DE LISTAGEM & BUSCA */}
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -367,7 +663,7 @@ export default function FinanceiroPage() {
         <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="font-bold text-[#103778] text-sm">
-              Extrato Financeiro ({filteredTransactions.length} lançamentos)
+              Extrato Financeiro ({filteredTransactions.length} lançamentos encontrados)
             </h3>
           </div>
 
@@ -381,7 +677,7 @@ export default function FinanceiroPage() {
             <div className="divide-y divide-slate-100 text-xs">
               {filteredTransactions.map((tx) => {
                 const isIncome = tx.type === 'income';
-                const info = categoryLabels[tx.category] || { label: tx.category, icon: FileText };
+                const info = categoryLabels[tx.category] || { label: tx.category, icon: FileText, color: 'bg-slate-500' };
                 const Icon = info.icon;
 
                 return (

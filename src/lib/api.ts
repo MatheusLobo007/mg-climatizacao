@@ -574,23 +574,37 @@ export async function completeServiceOrder(
       .eq('id', order.equipment_id);
   }
 
-  // 4. Integração Financeira Automática: Lançar receita se houve pagamento
-  if (closingData.amount_paid && closingData.amount_paid > 0) {
+  // 4. Integração Financeira Automática: Lançar receita no fluxo de caixa
+  const revenueAmount =
+    closingData.amount_paid && closingData.amount_paid > 0
+      ? closingData.amount_paid
+      : (order.total_amount || 0);
+
+  if (revenueAmount > 0) {
     try {
-      await supabase.from('mg_financial_transactions').insert([
-        {
-          type: 'income',
-          category: 'servico_os',
-          description: `Recebimento O.S. ${order.code} - ${order.customer?.name || 'Cliente'}`,
-          amount: closingData.amount_paid,
-          payment_method: closingData.payment_method || 'pix',
-          status: 'paid',
-          transaction_date: todayDateStr,
-          service_order_id: id,
-          customer_id: order.customer_id,
-          notes: `Conclusão da O.S. ${order.code}`,
-        },
-      ]);
+      // Verificar se já existe transação vinculada a esta OS para evitar duplicidade
+      const { data: existingTx } = await supabase
+        .from('mg_financial_transactions')
+        .select('id')
+        .eq('service_order_id', id)
+        .limit(1);
+
+      if (!existingTx || existingTx.length === 0) {
+        await supabase.from('mg_financial_transactions').insert([
+          {
+            type: 'income',
+            category: 'servico_os',
+            description: `Recebimento O.S. ${order.code} - ${order.customer?.name || 'Cliente'}`,
+            amount: revenueAmount,
+            payment_method: closingData.payment_method || 'pix',
+            status: closingData.payment_status === 'pending' ? 'pending' : 'paid',
+            transaction_date: todayDateStr,
+            service_order_id: id,
+            customer_id: order.customer_id,
+            notes: `Conclusão e faturamento da O.S. ${order.code}`,
+          },
+        ]);
+      }
     } catch (err) {
       console.error('Erro ao sincronizar receita financeira:', err);
     }
@@ -1742,5 +1756,71 @@ export async function createPMOCPlan(
   }
 
   return getPMOCPlanById(plan.id) as Promise<PMOCPlan>;
+}
+
+// ==========================================
+// EXCLUSÃO DE REGISTROS (MÓDULOS DO SISTEMA)
+// ==========================================
+export async function deleteCustomer(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_customers').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir cliente:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deleteEquipment(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_equipment').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir equipamento:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deleteServiceCatalogItem(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_service_catalog').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir serviço do catálogo:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deleteProduct(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_products').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir produto do estoque:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deleteQuote(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_quotes').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir orçamento:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deleteWarrantyTerm(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_warranty_terms').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir termo de garantia:', error);
+    throw new Error(error.message);
+  }
+  return true;
+}
+
+export async function deletePMOCPlan(id: string): Promise<boolean> {
+  const { error } = await supabase.from('mg_pmoc_plans').delete().eq('id', id);
+  if (error) {
+    console.error('Erro ao excluir plano PMOC:', error);
+    throw new Error(error.message);
+  }
+  return true;
 }
 

@@ -12,9 +12,10 @@ import {
   AirVent,
   ChevronRight,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getCustomers } from '@/lib/api';
+import { getCustomers, deleteCustomer } from '@/lib/api';
 import { Customer } from '@/lib/types';
 import {
   formatPhone,
@@ -26,6 +27,23 @@ export default function ClientesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [itemToDelete, setItemToDelete] = useState<Customer | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteCustomer(itemToDelete.id);
+      setItemToDelete(null);
+      await loadCustomers(search);
+    } catch (err: any) {
+      console.error('Erro ao excluir cliente:', err);
+      alert(err.message || 'Erro ao excluir cliente.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   async function loadCustomers(query?: string) {
     try {
@@ -196,13 +214,23 @@ export default function ClientesPage() {
                     )}
                   </div>
 
-                  <Link
-                    href={`/clientes/${c.id}`}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-[#103778] hover:text-[#0754D8] bg-slate-50 hover:bg-[#EAF3FF] px-3 py-2 rounded-xl transition-all"
-                  >
-                    <span>Ver detalhes</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/clientes/${c.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#103778] hover:text-[#0754D8] bg-slate-50 hover:bg-[#EAF3FF] px-3 py-2 rounded-xl transition-all"
+                    >
+                      <span>Ver detalhes</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setItemToDelete(c)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir cliente"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -222,6 +250,51 @@ export default function ClientesPage() {
             <Plus className="w-4 h-4" />
             <span>Cadastrar Primeiro Cliente</span>
           </Link>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Excluir Cliente</h3>
+                <p className="text-xs text-slate-500">Ação irreversível com cascata</p>
+              </div>
+            </div>
+
+            <div className="my-4 space-y-2">
+              <p className="text-sm text-slate-600">
+                Tem certeza que deseja excluir o cliente <strong className="text-slate-900">{itemToDelete.name}</strong>?
+              </p>
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
+                ⚠️ <strong>Atenção:</strong> Ao remover este cliente, todos os seus endereços, aparelhos de ar-condicionado cadastrados, orçamentos e históricos vinculados também serão removidos do sistema.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+              >
+                {deleting ? 'Excluindo...' : 'Sim, Excluir Cliente'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppLayout>

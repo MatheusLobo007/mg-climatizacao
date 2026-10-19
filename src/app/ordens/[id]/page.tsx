@@ -162,7 +162,7 @@ function OrdemDetalheContent() {
 
     try {
       setClosing(true);
-      const paid = parseFloat(amountPaid) || 0;
+      const paid = parseFloat(amountPaid) || order.total_amount || 0;
 
       const success = await completeServiceOrder(order.id, {
         technical_diagnosis: diagnosis.trim() || undefined,
