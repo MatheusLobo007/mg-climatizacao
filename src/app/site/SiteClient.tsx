@@ -90,7 +90,7 @@ export function SiteHeader({ whatsappUrl }: { whatsappUrl: string }) {
           <Link
             id="header-cta-login"
             href="/login"
-            className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-all border ${
+            className={`hidden md:inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-all border ${
               solid
                 ? 'text-[#103778] border-slate-200 hover:border-[#0754D8] hover:bg-[#EAF3FF]'
                 : 'text-white border-white/30 hover:border-white hover:bg-white/10'
