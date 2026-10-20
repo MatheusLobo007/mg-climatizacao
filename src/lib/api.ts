@@ -63,12 +63,12 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
         id: d.id,
         ...data,
         city_state: data.city_state || 'Manaus - AM',
-        owner_name: data.owner_name || 'Matheus Lobo',
+        owner_name: data.owner_name || 'Responsável Técnico',
         technical_registry: data.technical_registry || 'CFT/CRT Especialista em Refrigeração',
-        default_technician: data.default_technician || 'Matheus Lobo',
+        default_technician: data.default_technician || 'Técnico Principal',
         technicians: Array.isArray(data.technicians) && data.technicians.length > 0
           ? data.technicians
-          : ['Matheus Lobo', 'Técnico Auxiliar'],
+          : ['Técnico Principal', 'Técnico Auxiliar'],
       } as CompanySettings;
     }
 
@@ -81,19 +81,14 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
       email: 'contato@mgclimatizacao.com.br',
       address: 'Rua Principal, 100 - Adrianópolis, Manaus - AM',
       city_state: 'Manaus - AM',
-      owner_name: 'Matheus Lobo',
+      owner_name: 'Responsável Técnico',
       technical_registry: 'CFT/CRT Especialista em Refrigeração',
-      default_technician: 'Matheus Lobo',
-      technicians: ['Matheus Lobo', 'Técnico Auxiliar'],
+      default_technician: 'Técnico Principal',
+      technicians: ['Técnico Principal', 'Técnico Auxiliar'],
       default_maintenance_interval_months: 6,
     };
 
-    try {
-      const newDoc = await addDoc(colRef, defaultSettings);
-      return { id: newDoc.id, ...defaultSettings };
-    } catch {
-      return { id: 'default', ...defaultSettings };
-    }
+    return { id: 'main', ...defaultSettings };
   } catch (err) {
     console.error('Erro ao buscar configurações da empresa:', err);
     return null;
@@ -103,31 +98,25 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
 export async function updateCompanySettings(
   id: string,
   updates: Partial<CompanySettings>
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const colRef = collection(db, 'company_settings');
-    if (!id || id === 'default') {
-      const snap = await getDocs(query(colRef, firestoreLimit(1)));
-      if (!snap.empty) {
-        await updateDoc(doc(db, 'company_settings', snap.docs[0].id), {
-          ...updates,
-          updated_at: new Date().toISOString(),
-        });
-        return true;
-      }
-      await addDoc(colRef, {
+    const docId = id && id !== 'default' ? id : 'main';
+    const docRef = doc(db, 'company_settings', docId);
+    await setDoc(
+      docRef,
+      {
         ...updates,
-        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
-      return true;
-    }
-    const docRef = doc(db, 'company_settings', id);
-    await updateDoc(docRef, { ...updates, updated_at: new Date().toISOString() });
-    return true;
-  } catch (err) {
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (err: any) {
     console.error('Erro ao atualizar configurações da empresa:', err);
-    return false;
+    return {
+      success: false,
+      error: err?.message || 'Erro de permissão ou conexão com o Firestore.',
+    };
   }
 }
 

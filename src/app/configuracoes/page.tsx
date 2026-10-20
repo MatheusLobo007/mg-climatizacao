@@ -71,15 +71,15 @@ export default function SettingsPage() {
         setEmail(data.email || '');
         setAddress(data.address || '');
         setCityState(data.city_state || 'Manaus - AM');
-        setOwnerName(data.owner_name || 'Matheus Lobo');
+        setOwnerName(data.owner_name || 'Responsável Técnico');
         setTechnicalRegistry(data.technical_registry || 'CFT/CRT Especialista em Refrigeração');
         setMaintenanceInterval(data.default_maintenance_interval_months || 6);
 
         const techList = Array.isArray(data.technicians) && data.technicians.length > 0
           ? data.technicians
-          : ['Matheus Lobo', 'Técnico Auxiliar'];
+          : ['Técnico Principal', 'Técnico Auxiliar'];
         setTechnicians(techList);
-        setDefaultTechnician(data.default_technician || techList[0] || 'Matheus Lobo');
+        setDefaultTechnician(data.default_technician || techList[0] || 'Técnico Principal');
       }
     } catch (err) {
       console.error('Erro ao carregar configurações:', err);
@@ -153,16 +153,16 @@ export default function SettingsPage() {
         default_technician: defaultTechnician || technicians[0],
       };
 
-      const ok = await updateCompanySettings(settingsId, updates);
-      if (ok) {
+      const res = await updateCompanySettings(settingsId, updates);
+      if (res.success) {
         setSuccessMsg('Configurações salvas com sucesso! As alterações já estão ativas na Landing Page, O.S. e documentos.');
         setTimeout(() => setSuccessMsg(null), 5000);
       } else {
-        setErrorMsg('Erro ao salvar as configurações no banco de dados.');
+        setErrorMsg(`Erro ao salvar as configurações: ${res.error || 'Verifique as permissões do Firestore.'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao salvar configurações:', err);
-      setErrorMsg('Ocorreu um erro inesperado ao salvar.');
+      setErrorMsg(`Ocorreu um erro inesperado ao salvar: ${err?.message || String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -538,7 +538,7 @@ export default function SettingsPage() {
                       type="text"
                       value={ownerName}
                       onChange={(e) => setOwnerName(e.target.value)}
-                      placeholder="Ex: Matheus Lobo"
+                      placeholder="Ex: Nome do Responsável Técnico"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>

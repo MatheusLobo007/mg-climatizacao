@@ -39,7 +39,7 @@ function NovoAgendamentoContent() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('09:00');
   const [durationMin, setDurationMin] = useState('90');
-  const [technicianName, setTechnicianName] = useState('Matheus Lobo');
+  const [technicianName, setTechnicianName] = useState('Técnico Principal');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -56,7 +56,7 @@ function NovoAgendamentoContent() {
         if (company) {
           const techList = Array.isArray(company.technicians) && company.technicians.length > 0
             ? company.technicians
-            : ['Matheus Lobo', 'Técnico Auxiliar'];
+            : ['Técnico Principal', 'Técnico Auxiliar'];
           setTechnicians(techList);
           const defaultTech = company.default_technician || techList[0];
           setTechnicianName(defaultTech);

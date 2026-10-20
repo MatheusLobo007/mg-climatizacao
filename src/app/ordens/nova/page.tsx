@@ -58,7 +58,7 @@ function NovaOrdemContent() {
   const [category, setCategory] = useState<ServiceCategory>(paramCategory);
   const [isCleaning, setIsCleaning] = useState(paramCategory === 'climatizacao');
   const [problemDescription, setProblemDescription] = useState('');
-  const [technicianName, setTechnicianName] = useState('Matheus Lobo');
+  const [technicianName, setTechnicianName] = useState('Técnico Principal');
   const [scheduledDate, setScheduledDate] = useState('');
   const [discount, setDiscount] = useState('0');
 
@@ -86,7 +86,7 @@ function NovaOrdemContent() {
         if (company) {
           const techList = Array.isArray(company.technicians) && company.technicians.length > 0
             ? company.technicians
-            : ['Matheus Lobo', 'Técnico Auxiliar'];
+            : ['Técnico Principal', 'Técnico Auxiliar'];
           setTechnicians(techList);
           const defaultTech = company.default_technician || techList[0];
           setTechnicianName(defaultTech);

@@ -1402,7 +1402,7 @@ function OrdemDetalheContent() {
                               }}
                               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium text-slate-800 focus:border-[#0754D8] outline-none"
                             >
-                              {(company?.technicians || ['Matheus Lobo', 'Técnico Auxiliar']).map((t) => (
+                              {(company?.technicians || ['Técnico Principal', 'Técnico Auxiliar']).map((t) => (
                                 <option key={t} value={t}>
                                   {t}
                                 </option>
@@ -1424,7 +1424,7 @@ function OrdemDetalheContent() {
                               type="button"
                               onClick={() => {
                                 setIsCustomEditTech(false);
-                                const defaultT = company?.default_technician || company?.technicians?.[0] || 'Matheus Lobo';
+                                const defaultT = company?.default_technician || company?.technicians?.[0] || 'Técnico Principal';
                                 setEditTechnician(defaultT);
                               }}
                               className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"

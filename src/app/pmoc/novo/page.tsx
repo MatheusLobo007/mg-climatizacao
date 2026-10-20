@@ -40,7 +40,7 @@ export default function NovoPMOCPage() {
   }>({
     establishment_name: '',
     activity_type: 'Comercial / Serviços',
-    responsible_technician: 'Matheus Lobo',
+    responsible_technician: 'Responsável Técnico',
     technician_crea_cft: 'CFT/CRT Especialista em Refrigeração',
     periodicity: 'mensal',
     start_date: '',
