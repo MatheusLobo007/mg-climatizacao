@@ -1373,33 +1373,6 @@ export async function deleteAttachment(id: string): Promise<boolean> {
   }
 }
 
-export async function uploadServicePhoto(
-  serviceOrderId: string,
-  file: File | Blob,
-  type: 'before' | 'after',
-  caption?: string
-): Promise<ServiceAttachment> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64Url = reader.result as string;
-        const attachment = await addAttachment({
-          service_order_id: serviceOrderId,
-          file_url: base64Url,
-          attachment_type: type,
-          caption: caption || (type === 'before' ? 'Foto de Antes' : 'Foto de Depois'),
-        });
-        resolve(attachment);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
-  });
-}
-
 // ==========================================
 // FORNECEDORES
 // ==========================================

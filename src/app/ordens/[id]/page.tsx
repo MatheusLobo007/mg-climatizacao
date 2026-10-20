@@ -20,9 +20,6 @@ import {
   DollarSign,
   AlertCircle,
   Sparkles,
-  Camera,
-  Image as ImageIcon,
-  Upload,
   Trash2,
   Edit2,
   Save,
@@ -38,8 +35,6 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import {
   getServiceOrderById,
   completeServiceOrder,
-  getAttachments,
-  addAttachment,
   getCompanySettings,
   deleteServiceOrder,
   updateServiceOrder,
@@ -47,7 +42,6 @@ import {
 } from '@/lib/api';
 import {
   ServiceOrder,
-  ServiceAttachment,
   CompanySettings,
   ServiceCatalogItem,
   ServiceOrderStatus,
@@ -94,12 +88,10 @@ function OrdemDetalheContent() {
   const [order, setOrder] = useState<ServiceOrder | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([]);
-  const [attachments, setAttachments] = useState<ServiceAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [closing, setClosing] = useState(false);
   const [closeSuccess, setCloseSuccess] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -153,15 +145,13 @@ function OrdemDetalheContent() {
   async function loadData() {
     try {
       setLoading(true);
-      const [data, compData, attList, catList] = await Promise.all([
+      const [data, compData, catList] = await Promise.all([
         getServiceOrderById(orderId),
         getCompanySettings(),
-        getAttachments({ serviceOrderId: orderId }),
         getServiceCatalog(),
       ]);
       setOrder(data);
       setCompany(compData);
-      setAttachments(attList);
       setCatalog(catList);
 
       if (data) {
@@ -247,32 +237,6 @@ function OrdemDetalheContent() {
       } catch (e) {
         console.error('Erro ao salvar checklist completo:', e);
       }
-    }
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
-    const file = e.target.files?.[0];
-    if (!file || !order) return;
-
-    try {
-      setUploadingPhoto(true);
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result as string;
-        await addAttachment({
-          service_order_id: order.id,
-          file_url: base64,
-          attachment_type: type,
-          caption: type === 'before' ? 'Foto de Antes' : 'Foto de Depois',
-        });
-        const attList = await getAttachments({ serviceOrderId: order.id });
-        setAttachments(attList);
-        setUploadingPhoto(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error('Erro ao enviar foto:', err);
-      setUploadingPhoto(false);
     }
   };
 
@@ -944,92 +908,6 @@ function OrdemDetalheContent() {
             ) : (
               <p className="text-xs text-slate-400 italic">Nenhum item discriminado.</p>
             )}
-          </div>
-
-          {/* SEÇÃO: REGISTRO FOTOGRÁFICO ANTES E DEPOIS */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Camera className="w-5 h-5 text-[#0754D8]" />
-                <h3 className="text-base font-bold text-[#103778]">
-                  Registro Fotográfico (Antes e Depois)
-                </h3>
-              </div>
-              {uploadingPhoto && (
-                <span className="text-xs text-[#0754D8] animate-pulse font-semibold">
-                  Gravando imagem...
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-slate-500 mb-4">
-              Anexe fotos comprovando o estado inicial do aparelho/instalação e o resultado final após a execução do serviço.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Card de Foto Antes */}
-              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-700 block mb-2">
-                  Foto de Antes (Início do Atendimento)
-                </span>
-                {attachments.find((a) => a.attachment_type === 'before') ? (
-                  <div className="space-y-2">
-                    <img
-                      src={attachments.find((a) => a.attachment_type === 'before')?.file_url}
-                      alt="Antes do serviço"
-                      className="w-full h-44 object-cover rounded-lg border border-slate-200 shadow-2xs"
-                    />
-                    <span className="text-[10px] text-slate-500 block truncate">
-                      {attachments.find((a) => a.attachment_type === 'before')?.caption || 'Foto anexada'}
-                    </span>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center h-44 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-all">
-                    <Camera className="w-8 h-8 text-slate-400 mb-1" />
-                    <span className="text-xs font-semibold text-[#0754D8]">Tirar ou Anexar Foto</span>
-                    <span className="text-[10px] text-slate-400">Estado inicial do aparelho</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoUpload(e, 'before')}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
-
-              {/* Card de Foto Depois */}
-              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-700 block mb-2">
-                  Foto de Depois (Resultado Concluído)
-                </span>
-                {attachments.find((a) => a.attachment_type === 'after') ? (
-                  <div className="space-y-2">
-                    <img
-                      src={attachments.find((a) => a.attachment_type === 'after')?.file_url}
-                      alt="Depois do serviço"
-                      className="w-full h-44 object-cover rounded-lg border border-slate-200 shadow-2xs"
-                    />
-                    <span className="text-[10px] text-slate-500 block truncate">
-                      {attachments.find((a) => a.attachment_type === 'after')?.caption || 'Foto anexada'}
-                    </span>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center h-44 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-all">
-                    <Camera className="w-8 h-8 text-slate-400 mb-1" />
-                    <span className="text-xs font-semibold text-[#0754D8]">Tirar ou Anexar Foto</span>
-                    <span className="text-[10px] text-slate-400">Resultado limpo e finalizado</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoUpload(e, 'after')}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* SEÇÃO 3: ENCERRAMENTO E CONCLUSÃO DA O.S. */}
