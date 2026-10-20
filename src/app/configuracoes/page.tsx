@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getCompanySettings, updateCompanySettings } from '@/lib/api';
 import { CompanySettings } from '@/lib/types';
+import { maskPhone, maskCpfCnpj } from '@/lib/formatters';
 import {
   Building2,
   Phone,
@@ -312,7 +313,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={cnpjCpf}
-                      onChange={(e) => setCnpjCpf(e.target.value)}
+                      onChange={(e) => setCnpjCpf(maskCpfCnpj(e.target.value))}
                       placeholder="Ex: 45.123.456/0001-78"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
@@ -339,8 +340,8 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="Ex: (92) 99123-4567 ou 5592991234567"
+                      onChange={(e) => setWhatsapp(maskPhone(e.target.value))}
+                      placeholder="Ex: (92) 99123-4567"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>
@@ -352,8 +353,8 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Ex: (92) 99123-4567"
+                      onChange={(e) => setPhone(maskPhone(e.target.value))}
+                      placeholder="Ex: (92) 3234-5678"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>

@@ -45,7 +45,7 @@ import {
   StockMovement,
   StockMovementType,
 } from '@/lib/types';
-import { formatCurrencyBRL } from '@/lib/formatters';
+import { formatCurrencyBRL, maskPhone } from '@/lib/formatters';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 export default function EstoquePage() {
@@ -1357,8 +1357,8 @@ export default function EstoquePage() {
                   <input
                     type="text"
                     value={newSupplier.phone || ''}
-                    onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
-                    placeholder="Ex: 9232145678"
+                    onChange={(e) => setNewSupplier({ ...newSupplier, phone: maskPhone(e.target.value) })}
+                    placeholder="Ex: (92) 3214-5678"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
                   />
                 </div>

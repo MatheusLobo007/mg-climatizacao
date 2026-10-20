@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { createCustomer } from '@/lib/api';
+import { maskPhone, maskCpfCnpj } from '@/lib/formatters';
 
 export default function NovoClientePage() {
   const router = useRouter();
@@ -146,7 +147,7 @@ export default function NovoClientePage() {
                 <input
                   type="text"
                   value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
+                  onChange={(e) => setWhatsapp(maskPhone(e.target.value))}
                   placeholder="(92) 99123-4567"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
                 />
@@ -159,7 +160,7 @@ export default function NovoClientePage() {
                 <input
                   type="text"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(maskPhone(e.target.value))}
                   placeholder="(92) 3234-5678"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
                 />
@@ -185,7 +186,7 @@ export default function NovoClientePage() {
                 <input
                   type="text"
                   value={documentCpfCnpj}
-                  onChange={(e) => setDocumentCpfCnpj(e.target.value)}
+                  onChange={(e) => setDocumentCpfCnpj(maskCpfCnpj(e.target.value))}
                   placeholder="000.000.000-00"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
                 />
