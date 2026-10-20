@@ -27,6 +27,7 @@ import {
   Trash2,
   BarChart3,
   Percent,
+  RotateCcw,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -142,6 +143,14 @@ export default function FinanceiroPage() {
   const handlePresetClick = (preset: any) => {
     setPeriodPreset(preset);
     applyPresetDates(preset);
+  };
+
+  const handleClearFilters = () => {
+    setPeriodPreset('month');
+    applyPresetDates('month');
+    setTypeFilter('all');
+    setCategoryFilter('all');
+    setSearch('');
   };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
@@ -397,6 +406,17 @@ export default function FinanceiroPage() {
                   className="bg-transparent font-semibold text-slate-700 focus:outline-hidden"
                 />
               </div>
+
+              {/* Botão de Limpar Filtro */}
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-all font-semibold active:scale-95 shadow-2xs shrink-0 cursor-pointer"
+                title="Limpar filtros e restaurar período atual"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-red-500" />
+                <span>Limpar Filtro</span>
+              </button>
             </div>
           </div>
         </div>
@@ -477,7 +497,7 @@ export default function FinanceiroPage() {
         {/* SEÇÃO GRÁFICA VISUAL */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Gráfico 1: Evolução Diária (Barras Comparativas) */}
-          <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
+          <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-[#0754D8]" />
@@ -537,7 +557,7 @@ export default function FinanceiroPage() {
           </div>
 
           {/* Gráfico 2: Despesas por Categoria & Rentabilidade */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-start gap-4">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col gap-3.5">
             {/* Header com totalizador */}
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
@@ -600,8 +620,8 @@ export default function FinanceiroPage() {
               </div>
             )}
 
-            {/* Painel de Saúde Financeira & Margem Líquida */}
-            <div className="mt-auto p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+            {/* Painel de Saúde Financeira & Margem Líquida (posicionado logo abaixo das despesas) */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-[#103778] flex items-center gap-1.5">
                   <Percent className="w-3.5 h-3.5 text-[#0754D8]" />
@@ -696,7 +716,14 @@ export default function FinanceiroPage() {
             <div className="p-12 text-center text-slate-400 text-sm">Carregando fluxo de caixa...</div>
           ) : filteredTransactions.length === 0 ? (
             <div className="p-10 text-center text-slate-400 text-sm">
-              Nenhuma transação encontrada para os filtros selecionados.
+              <p>Nenhuma transação encontrada para os filtros selecionados.</p>
+              <button
+                onClick={handleClearFilters}
+                className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#0754D8] bg-[#EAF3FF] hover:bg-[#d6e7ff] transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Limpar Filtros</span>
+              </button>
             </div>
           ) : (
             <div className="divide-y divide-slate-100 text-xs">

@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Filter,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getServiceOrders, deleteServiceOrder } from '@/lib/api';
@@ -242,7 +243,15 @@ export default function OrdensPage() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/ordens/${ord.id}?edit=finance`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-1.5 text-slate-400 hover:text-[#0754D8] hover:bg-[#EAF3FF] rounded-lg transition-colors"
+                      title="Editar O.S. & Financeiro"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Link>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -255,7 +264,7 @@ export default function OrdensPage() {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1">
+                    <span className="text-xs font-bold text-[#0754D8] hover:underline inline-flex items-center gap-1 ml-1">
                       <span>Ver Ordem</span>
                       <ChevronRight className="w-4 h-4" />
                     </span>

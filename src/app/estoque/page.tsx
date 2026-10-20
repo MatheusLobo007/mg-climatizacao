@@ -30,8 +30,12 @@ import {
   deleteProduct,
   getSuppliers,
   createSupplier,
+  updateSupplier,
+  deleteSupplier,
   getStockMovements,
   recordStockMovement,
+  updateStockMovement,
+  deleteStockMovement,
 } from '@/lib/api';
 import {
   Product,
@@ -61,6 +65,13 @@ export default function EstoquePage() {
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [selectedProductForMovement, setSelectedProductForMovement] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [deletingSupplier, setDeletingSupplier] = useState(false);
+  const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
+  const [movementToDelete, setMovementToDelete] = useState<StockMovement | null>(null);
+  const [deletingMovement, setDeletingMovement] = useState(false);
 
   // Forms
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
@@ -72,6 +83,7 @@ export default function EstoquePage() {
     min_stock: 2,
     cost_price: 0,
     sale_price: 0,
+    supplier_id: '',
     notes: '',
   });
 
@@ -140,13 +152,63 @@ export default function EstoquePage() {
   }, []);
 
   // Handlers
-  const handleCreateProduct = async (e: React.FormEvent) => {
+  const openNewProductModal = () => {
+    setEditingProduct(null);
+    setNewProduct({
+      name: '',
+      category: 'gas',
+      sku: '',
+      unit: 'un',
+      quantity: 0,
+      min_stock: 2,
+      cost_price: 0,
+      sale_price: 0,
+      supplier_id: '',
+      notes: '',
+    });
+    setShowProductModal(true);
+  };
+
+  const openEditProductModal = (product: Product) => {
+    setEditingProduct(product);
+    setNewProduct({
+      name: product.name,
+      category: product.category,
+      sku: product.sku || '',
+      unit: product.unit,
+      quantity: product.quantity,
+      min_stock: product.min_stock,
+      cost_price: product.cost_price || 0,
+      sale_price: product.sale_price || 0,
+      supplier_id: product.supplier_id || '',
+      notes: product.notes || '',
+    });
+    setShowProductModal(true);
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.name?.trim()) return;
     setSubmitting(true);
     try {
-      await createProduct(newProduct);
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, {
+          name: newProduct.name.trim(),
+          category: newProduct.category,
+          sku: newProduct.sku?.trim() || null,
+          unit: newProduct.unit,
+          quantity: Number(newProduct.quantity) || 0,
+          min_stock: Number(newProduct.min_stock) || 0,
+          cost_price: Number(newProduct.cost_price) || 0,
+          sale_price: Number(newProduct.sale_price) || 0,
+          supplier_id: newProduct.supplier_id || null,
+          notes: newProduct.notes?.trim() || null,
+        });
+      } else {
+        await createProduct(newProduct);
+      }
       setShowProductModal(false);
+      setEditingProduct(null);
       setNewProduct({
         name: '',
         category: 'gas',
@@ -156,11 +218,13 @@ export default function EstoquePage() {
         min_stock: 2,
         cost_price: 0,
         sale_price: 0,
+        supplier_id: '',
         notes: '',
       });
       await loadData();
-    } catch (err) {
-      console.error('Erro ao cadastrar produto:', err);
+    } catch (err: any) {
+      console.error('Erro ao salvar produto:', err);
+      alert(err.message || 'Erro ao salvar produto.');
     } finally {
       setSubmitting(false);
     }
@@ -171,30 +235,79 @@ export default function EstoquePage() {
     if (!movementForm.productId || movementForm.quantity <= 0) return;
     setSubmitting(true);
     try {
-      await recordStockMovement({
-        productId: movementForm.productId,
-        movementType: movementForm.movementType,
-        quantity: Number(movementForm.quantity),
-        unitCost: Number(movementForm.unitCost) || undefined,
-        notes: movementForm.notes || undefined,
-      });
+      if (editingMovement) {
+        await updateStockMovement(editingMovement.id, {
+          movementType: movementForm.movementType,
+          quantity: Number(movementForm.quantity),
+          unitCost: Number(movementForm.unitCost) || undefined,
+          notes: movementForm.notes || undefined,
+        });
+      } else {
+        await recordStockMovement({
+          productId: movementForm.productId,
+          movementType: movementForm.movementType,
+          quantity: Number(movementForm.quantity),
+          unitCost: Number(movementForm.unitCost) || undefined,
+          notes: movementForm.notes || undefined,
+        });
+      }
       setShowMovementModal(false);
+      setEditingMovement(null);
       setSelectedProductForMovement(null);
       await loadData();
-    } catch (err) {
-      console.error('Erro ao registrar movimentação:', err);
+    } catch (err: any) {
+      console.error('Erro ao salvar movimentação:', err);
+      alert(err.message || 'Erro ao registrar movimentação.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCreateSupplier = async (e: React.FormEvent) => {
+  const openNewSupplierModal = () => {
+    setEditingSupplier(null);
+    setNewSupplier({
+      name: '',
+      contact_name: '',
+      phone: '',
+      whatsapp: '',
+      city: 'Manaus',
+      notes: '',
+    });
+    setShowSupplierModal(true);
+  };
+
+  const openEditSupplierModal = (sup: Supplier) => {
+    setEditingSupplier(sup);
+    setNewSupplier({
+      name: sup.name,
+      contact_name: sup.contact_name || '',
+      phone: sup.phone || '',
+      whatsapp: sup.whatsapp || '',
+      city: sup.city || 'Manaus',
+      notes: sup.notes || '',
+    });
+    setShowSupplierModal(true);
+  };
+
+  const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupplier.name?.trim()) return;
     setSubmitting(true);
     try {
-      await createSupplier(newSupplier as any);
+      if (editingSupplier) {
+        await updateSupplier(editingSupplier.id, {
+          name: newSupplier.name.trim(),
+          contact_name: newSupplier.contact_name?.trim() || null,
+          phone: newSupplier.phone?.trim() || null,
+          whatsapp: newSupplier.whatsapp?.trim() || null,
+          city: newSupplier.city?.trim() || null,
+          notes: newSupplier.notes?.trim() || null,
+        });
+      } else {
+        await createSupplier(newSupplier as any);
+      }
       setShowSupplierModal(false);
+      setEditingSupplier(null);
       setNewSupplier({
         name: '',
         contact_name: '',
@@ -204,14 +317,31 @@ export default function EstoquePage() {
         notes: '',
       });
       await loadData();
-    } catch (err) {
-      console.error('Erro ao cadastrar fornecedor:', err);
+    } catch (err: any) {
+      console.error('Erro ao salvar fornecedor:', err);
+      alert(err.message || 'Erro ao salvar fornecedor.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleConfirmDeleteSupplier = async () => {
+    if (!supplierToDelete) return;
+    try {
+      setDeletingSupplier(true);
+      await deleteSupplier(supplierToDelete.id);
+      setSupplierToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir fornecedor:', err);
+      alert(err.message || 'Erro ao excluir fornecedor.');
+    } finally {
+      setDeletingSupplier(false);
+    }
+  };
+
   const openMovementForProduct = (prod: Product) => {
+    setEditingMovement(null);
     setSelectedProductForMovement(prod);
     setMovementForm({
       productId: prod.id,
@@ -221,6 +351,50 @@ export default function EstoquePage() {
       notes: '',
     });
     setShowMovementModal(true);
+  };
+
+  const openEditMovementModal = (mov: StockMovement) => {
+    setEditingMovement(mov);
+    const prod = mov.product || products.find((p) => p.id === mov.product_id) || null;
+    setSelectedProductForMovement(prod);
+
+    let uiType: StockMovementType = 'entry';
+    if (mov.movement_type === 'in_purchase' || mov.movement_type === 'entry' || mov.movement_type === 'return') {
+      uiType = 'entry';
+    } else if (
+      mov.movement_type === 'loss' ||
+      mov.movement_type === 'exit' ||
+      mov.movement_type === 'out_service_order' ||
+      mov.movement_type === 'service_order'
+    ) {
+      uiType = 'exit';
+    } else {
+      uiType = 'adjustment';
+    }
+
+    setMovementForm({
+      productId: mov.product_id,
+      movementType: uiType,
+      quantity: Math.abs(mov.quantity),
+      unitCost: mov.unit_cost || (prod?.cost_price || 0),
+      notes: mov.notes || '',
+    });
+    setShowMovementModal(true);
+  };
+
+  const handleConfirmDeleteMovement = async () => {
+    if (!movementToDelete) return;
+    try {
+      setDeletingMovement(true);
+      await deleteStockMovement(movementToDelete.id);
+      setMovementToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir movimentação:', err);
+      alert(err.message || 'Erro ao excluir movimentação.');
+    } finally {
+      setDeletingMovement(false);
+    }
   };
 
   // Calculations
@@ -267,9 +441,9 @@ export default function EstoquePage() {
           <button
             onClick={() => {
               if (activeTab === 'suppliers') {
-                setShowSupplierModal(true);
+                openNewSupplierModal();
               } else {
-                setShowProductModal(true);
+                openNewProductModal();
               }
             }}
             className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-[#0754D8] hover:bg-[#0642aa] text-white py-2.5 px-4 rounded-xl font-semibold text-sm transition-all shadow-md active:scale-95"
@@ -429,7 +603,7 @@ export default function EstoquePage() {
                 Cadastre insumos como gases (R410A, R32), bactericidas e disjuntores para acompanhar o estoque.
               </p>
               <button
-                onClick={() => setShowProductModal(true)}
+                onClick={() => openNewProductModal()}
                 className="mt-4 inline-flex items-center gap-2 bg-[#0754D8] text-white py-2 px-4 rounded-xl text-xs font-semibold"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -508,6 +682,13 @@ export default function EstoquePage() {
                         <span>Movimentar</span>
                       </button>
                       <button
+                        onClick={() => openEditProductModal(product)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                        title="Editar item do estoque"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => setItemToDelete(product)}
                         className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
                         title="Excluir item do estoque"
@@ -551,8 +732,15 @@ export default function EstoquePage() {
           ) : (
             <div className="divide-y divide-slate-100 text-xs">
               {movements.map((mov) => {
-                const isEntry = mov.movement_type === 'entry';
-                const isExit = mov.movement_type === 'exit' || mov.movement_type === 'service_order';
+                const isEntry =
+                  mov.movement_type === 'entry' ||
+                  mov.movement_type === 'in_purchase' ||
+                  mov.movement_type === 'return';
+                const isExit =
+                  mov.movement_type === 'exit' ||
+                  mov.movement_type === 'loss' ||
+                  mov.movement_type === 'service_order' ||
+                  mov.movement_type === 'out_service_order';
                 return (
                   <div key={mov.id} className="p-3.5 sm:px-5 flex items-center justify-between gap-3 hover:bg-slate-50/70">
                     <div className="flex items-center gap-3">
@@ -579,27 +767,47 @@ export default function EstoquePage() {
                           {mov.product?.name || 'Produto'}
                         </h4>
                         <p className="text-slate-500 text-[11px] mt-0.5">
-                          {mov.movement_type === 'entry' && 'Entrada / Compra'}
-                          {mov.movement_type === 'exit' && 'Saída Manual'}
-                          {mov.movement_type === 'service_order' && 'Consumo em O.S.'}
+                          {(mov.movement_type === 'entry' || mov.movement_type === 'in_purchase') && 'Entrada / Compra'}
+                          {(mov.movement_type === 'exit' || mov.movement_type === 'loss') && 'Saída Manual / Perda'}
+                          {(mov.movement_type === 'service_order' || mov.movement_type === 'out_service_order') && 'Consumo em O.S.'}
+                          {mov.movement_type === 'return' && 'Devolução ao Estoque'}
                           {mov.movement_type === 'adjustment' && 'Ajuste de Balanço'}
                           {mov.notes && ` • ${mov.notes}`}
                         </p>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p
-                        className={`font-bold text-sm ${
-                          isEntry ? 'text-emerald-700' : isExit ? 'text-red-700' : 'text-slate-800'
-                        }`}
-                      >
-                        {isEntry ? '+' : isExit ? '-' : ''}
-                        {mov.quantity} {mov.product?.unit || 'un'}
-                      </p>
-                      <p className="text-slate-400 text-[10px] mt-0.5">
-                        {mov.created_at ? new Date(mov.created_at).toLocaleDateString('pt-BR') : ''}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p
+                          className={`font-bold text-sm ${
+                            isEntry ? 'text-emerald-700' : isExit ? 'text-red-700' : 'text-slate-800'
+                          }`}
+                        >
+                          {isEntry ? '+' : isExit ? '-' : ''}
+                          {mov.quantity} {mov.product?.unit || 'un'}
+                        </p>
+                        <p className="text-slate-400 text-[10px] mt-0.5">
+                          {mov.created_at ? new Date(mov.created_at).toLocaleDateString('pt-BR') : ''}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 pl-2 border-l border-slate-100">
+                        <button
+                          onClick={() => openEditMovementModal(mov)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                          title="Editar movimentação"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setMovementToDelete(mov)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                          title="Excluir movimentação"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -617,7 +825,7 @@ export default function EstoquePage() {
               Contatos de distribuidoras de refrigeração e lojas de materiais elétricos
             </p>
             <button
-              onClick={() => setShowSupplierModal(true)}
+              onClick={() => openNewSupplierModal()}
               className="inline-flex items-center gap-1.5 bg-[#0754D8] text-white py-2 px-3.5 rounded-xl text-xs font-semibold"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -632,6 +840,13 @@ export default function EstoquePage() {
               <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
                 Guarde contatos de lojas de gás e peças em Manaus para orçamentos rápidos de reposição.
               </p>
+              <button
+                onClick={() => openNewSupplierModal()}
+                className="mt-4 inline-flex items-center gap-2 bg-[#0754D8] text-white py-2 px-4 rounded-xl text-xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Cadastrar Primeiro Fornecedor</span>
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -655,7 +870,7 @@ export default function EstoquePage() {
                     )}
                   </div>
 
-                  <div className="pt-3 mt-4 border-t border-slate-100 flex gap-2">
+                  <div className="pt-3 mt-4 border-t border-slate-100 flex items-center gap-2">
                     {sup.whatsapp && (
                       <a
                         href={`https://wa.me/55${sup.whatsapp.replace(/\D/g, '')}`}
@@ -676,6 +891,20 @@ export default function EstoquePage() {
                         <Phone className="w-4 h-4" />
                       </a>
                     )}
+                    <button
+                      onClick={() => openEditSupplierModal(sup)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                      title="Editar fornecedor"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setSupplierToDelete(sup)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir fornecedor"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -684,24 +913,36 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* MODAL: NOVO PRODUTO */}
+      {/* MODAL: PRODUTO (CADASTRAR OU EDITAR) */}
       {showProductModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-lg text-[#103778] flex items-center gap-2">
-                <Package className="w-5 h-5 text-[#0754D8]" />
-                <span>Cadastrar Novo Insumo / Peça</span>
+                {editingProduct ? (
+                  <>
+                    <Edit2 className="w-5 h-5 text-[#0754D8]" />
+                    <span>Editar Item do Estoque</span>
+                  </>
+                ) : (
+                  <>
+                    <Package className="w-5 h-5 text-[#0754D8]" />
+                    <span>Cadastrar Novo Insumo / Peça</span>
+                  </>
+                )}
               </h3>
               <button
-                onClick={() => setShowProductModal(false)}
+                onClick={() => {
+                  setShowProductModal(false);
+                  setEditingProduct(null);
+                }}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateProduct} className="space-y-4 mt-4">
+            <form onSubmit={handleSaveProduct} className="space-y-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nome do Item / Descrição *
@@ -757,7 +998,7 @@ export default function EstoquePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Quantidade Inicial em Estoque
+                    {editingProduct ? 'Saldo em Estoque' : 'Quantidade Inicial em Estoque'}
                   </label>
                   <input
                     type="number"
@@ -843,10 +1084,26 @@ export default function EstoquePage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Observações / Localização / Aplicação
+                </label>
+                <textarea
+                  rows={2}
+                  value={newProduct.notes || ''}
+                  onChange={(e) => setNewProduct({ ...newProduct, notes: e.target.value })}
+                  placeholder="Ex: Prateleira B2, compatível com split inverter 9k-18k..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden resize-none"
+                />
+              </div>
+
               <div className="pt-3 border-t border-slate-100 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowProductModal(false)}
+                  onClick={() => {
+                    setShowProductModal(false);
+                    setEditingProduct(null);
+                  }}
                   className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50"
                 >
                   Cancelar
@@ -856,7 +1113,7 @@ export default function EstoquePage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl bg-[#0754D8] text-white text-sm font-semibold hover:bg-[#0642aa] disabled:opacity-50"
                 >
-                  {submitting ? 'Salvando...' : 'Cadastrar Item'}
+                  {submitting ? 'Salvando...' : editingProduct ? 'Salvar Alterações' : 'Cadastrar Item'}
                 </button>
               </div>
             </form>
@@ -864,14 +1121,29 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* MODAL: MOVIMENTAÇÃO DE ESTOQUE */}
+      {/* MODAL: MOVIMENTAÇÃO DE ESTOQUE (LANÇAR OU EDITAR) */}
       {showMovementModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-lg text-[#103778]">Movimentar Estoque</h3>
+              <h3 className="font-bold text-lg text-[#103778] flex items-center gap-2">
+                {editingMovement ? (
+                  <>
+                    <Edit2 className="w-5 h-5 text-[#0754D8]" />
+                    <span>Editar Movimentação</span>
+                  </>
+                ) : (
+                  <>
+                    <SlidersHorizontal className="w-5 h-5 text-[#0754D8]" />
+                    <span>Movimentar Estoque</span>
+                  </>
+                )}
+              </h3>
               <button
-                onClick={() => setShowMovementModal(false)}
+                onClick={() => {
+                  setShowMovementModal(false);
+                  setEditingMovement(null);
+                }}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
@@ -883,24 +1155,30 @@ export default function EstoquePage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Item Selecionado
                 </label>
-                <select
-                  value={movementForm.productId}
-                  onChange={(e) => {
-                    const prod = products.find((p) => p.id === e.target.value);
-                    setMovementForm({
-                      ...movementForm,
-                      productId: e.target.value,
-                      unitCost: prod?.cost_price || 0,
-                    });
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:border-[#0754D8] focus:outline-hidden"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (Atual: {p.quantity} {p.unit})
-                    </option>
-                  ))}
-                </select>
+                {editingMovement ? (
+                  <div className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50 font-semibold text-[#103778]">
+                    {selectedProductForMovement?.name || 'Item do Estoque'}
+                  </div>
+                ) : (
+                  <select
+                    value={movementForm.productId}
+                    onChange={(e) => {
+                      const prod = products.find((p) => p.id === e.target.value);
+                      setMovementForm({
+                        ...movementForm,
+                        productId: e.target.value,
+                        unitCost: prod?.cost_price || 0,
+                      });
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:border-[#0754D8] focus:outline-hidden"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Atual: {p.quantity} {p.unit})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -974,7 +1252,10 @@ export default function EstoquePage() {
               <div className="pt-3 border-t border-slate-100 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowMovementModal(false)}
+                  onClick={() => {
+                    setShowMovementModal(false);
+                    setEditingMovement(null);
+                  }}
                   className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50"
                 >
                   Cancelar
@@ -984,7 +1265,11 @@ export default function EstoquePage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl bg-[#0754D8] text-white text-sm font-semibold hover:bg-[#0642aa] disabled:opacity-50"
                 >
-                  {submitting ? 'Lançando...' : 'Confirmar'}
+                  {submitting
+                    ? 'Salvando...'
+                    : editingMovement
+                    ? 'Salvar Alterações'
+                    : 'Confirmar'}
                 </button>
               </div>
             </form>
@@ -992,21 +1277,36 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* MODAL: NOVO FORNECEDOR */}
+      {/* MODAL: FORNECEDOR (CADASTRAR OU EDITAR) */}
       {showSupplierModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-lg text-[#103778]">Cadastrar Fornecedor</h3>
+              <h3 className="font-bold text-lg text-[#103778] flex items-center gap-2">
+                {editingSupplier ? (
+                  <>
+                    <Edit2 className="w-5 h-5 text-[#0754D8]" />
+                    <span>Editar Fornecedor</span>
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-5 h-5 text-[#0754D8]" />
+                    <span>Cadastrar Fornecedor</span>
+                  </>
+                )}
+              </h3>
               <button
-                onClick={() => setShowSupplierModal(false)}
+                onClick={() => {
+                  setShowSupplierModal(false);
+                  setEditingSupplier(null);
+                }}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSupplier} className="space-y-4 mt-4">
+            <form onSubmit={handleSaveSupplier} className="space-y-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nome da Empresa / Loja *
@@ -1092,7 +1392,10 @@ export default function EstoquePage() {
               <div className="pt-3 border-t border-slate-100 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowSupplierModal(false)}
+                  onClick={() => {
+                    setShowSupplierModal(false);
+                    setEditingSupplier(null);
+                  }}
                   className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50"
                 >
                   Cancelar
@@ -1102,7 +1405,7 @@ export default function EstoquePage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl bg-[#0754D8] text-white text-sm font-semibold hover:bg-[#0642aa] disabled:opacity-50"
                 >
-                  {submitting ? 'Salvando...' : 'Salvar Fornecedor'}
+                  {submitting ? 'Salvando...' : editingSupplier ? 'Salvar Alterações' : 'Salvar Fornecedor'}
                 </button>
               </div>
             </form>
@@ -1145,6 +1448,114 @@ export default function EstoquePage() {
                 className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
               >
                 {deleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Excluindo...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Sim, Excluir</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE FORNECEDOR */}
+      {supplierToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Excluir Fornecedor</h3>
+                <p className="text-xs text-slate-500">Esta ação não poderá ser desfeita</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 my-4">
+              Tem certeza que deseja excluir o fornecedor <strong className="text-slate-900">{supplierToDelete.name}</strong>?
+              Os produtos associados a este fornecedor serão mantidos no catálogo sem fornecedor vinculado.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSupplierToDelete(null)}
+                disabled={deletingSupplier}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteSupplier}
+                disabled={deletingSupplier}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+              >
+                {deletingSupplier ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Excluindo...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Sim, Excluir</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE MOVIMENTAÇÃO */}
+      {movementToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Excluir Movimentação</h3>
+                <p className="text-xs text-slate-500">O saldo do estoque será recalculado automaticamente</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 my-4">
+              Tem certeza que deseja excluir esta movimentação de{' '}
+              <strong className="text-slate-900">
+                {movementToDelete.quantity} {movementToDelete.product?.unit || 'un'}
+              </strong>{' '}
+              do item{' '}
+              <strong className="text-slate-900">
+                {movementToDelete.product?.name || 'Produto'}
+              </strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setMovementToDelete(null)}
+                disabled={deletingMovement}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteMovement}
+                disabled={deletingMovement}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-60"
+              >
+                {deletingMovement ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     <span>Excluindo...</span>

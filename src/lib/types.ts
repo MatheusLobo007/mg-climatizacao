@@ -256,7 +256,9 @@ export interface Product {
   min_stock: number;
   cost_price: number;
   sale_price: number;
+  selling_price?: number;
   supplier_id?: string | null;
+  location?: string | null;
   notes?: string | null;
   status: 'active' | 'inactive';
   created_at?: string;
@@ -264,7 +266,18 @@ export interface Product {
   supplier?: Supplier;
 }
 
-export type StockMovementType = 'entry' | 'exit' | 'adjustment' | 'service_order';
+export type StockMovementType =
+  | 'in_purchase'
+  | 'out_service_order'
+  | 'adjustment'
+  | 'loss'
+  | 'return'
+  | 'entry'
+  | 'exit'
+  | 'service_order'
+  | 'initial'
+  | 'in'
+  | 'out';
 
 export interface StockMovement {
   id: string;

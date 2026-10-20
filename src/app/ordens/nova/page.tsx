@@ -16,10 +16,14 @@ import {
   Calendar,
   CheckCircle2,
   Sparkles,
+  DollarSign,
+  AlertCircle,
+  Clock,
+  Receipt,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getCustomers, getServiceCatalog, createServiceOrder } from '@/lib/api';
-import { Customer, ServiceCatalogItem, ServiceCategory } from '@/lib/types';
+import { Customer, ServiceCatalogItem, ServiceCategory, PaymentStatus } from '@/lib/types';
 import { formatCurrency } from '@/lib/formatters';
 
 interface OrderItemRow {
@@ -55,6 +59,11 @@ function NovaOrdemContent() {
   const [technicianName, setTechnicianName] = useState('Técnico MG');
   const [scheduledDate, setScheduledDate] = useState('');
   const [discount, setDiscount] = useState('0');
+
+  // Campos de Pagamento & Fluxo de Caixa
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('pending');
+  const [paymentMethod, setPaymentMethod] = useState('Pix');
+  const [amountPaid, setAmountPaid] = useState('0');
 
   // Items adicionados à OS
   const [items, setItems] = useState<OrderItemRow[]>([]);
@@ -153,6 +162,13 @@ function NovaOrdemContent() {
       setSaving(true);
       setErrorMsg(null);
 
+      const paidVal =
+        paymentStatus === 'paid'
+          ? (parseFloat(amountPaid) || grandTotal)
+          : paymentStatus === 'partial'
+          ? (parseFloat(amountPaid) || 0)
+          : 0;
+
       const order = await createServiceOrder({
         customer_id: customerId,
         address_id: addressId || undefined,
@@ -167,6 +183,9 @@ function NovaOrdemContent() {
         total_materials: totalMaterials,
         discount: discountVal,
         total_amount: grandTotal,
+        payment_status: paymentStatus,
+        payment_method: paymentMethod,
+        amount_paid: paidVal,
         items: items.map((i) => ({
           item_type: i.item_type,
           catalog_service_id: i.catalog_service_id,
@@ -514,6 +533,133 @@ function NovaOrdemContent() {
               <span className="text-xl text-[#0754D8]">{formatCurrency(grandTotal)}</span>
             </div>
           </div>
+        </div>
+
+        {/* CONDIÇÕES FINANCEIRAS & PAGAMENTO */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-[#0754D8]" />
+              <span>Condições de Pagamento & Faturamento</span>
+            </h3>
+            <span className="text-[11px] font-semibold text-[#0754D8] bg-[#EAF3FF] px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+              <Receipt className="w-3.5 h-3.5" />
+              Sincroniza com Fluxo de Caixa
+            </span>
+          </div>
+
+          {/* Seletores rápidos de situação de pagamento */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-2">
+              Situação do Pagamento na Abertura
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentStatus('pending');
+                  setAmountPaid('0');
+                }}
+                className={`p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                  paymentStatus === 'pending'
+                    ? 'bg-red-50/90 border-red-400 text-red-900 ring-2 ring-red-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div>
+                  <span className="font-extrabold text-xs block">Pendente (A Receber)</span>
+                  <span className="text-[10px] text-red-700">A pagar no atendimento</span>
+                </div>
+                {paymentStatus === 'pending' && <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentStatus('paid');
+                  setAmountPaid(String(grandTotal));
+                }}
+                className={`p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                  paymentStatus === 'paid'
+                    ? 'bg-emerald-50/90 border-emerald-400 text-emerald-900 ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div>
+                  <span className="font-extrabold text-xs block">Já Pago (Quitado)</span>
+                  <span className="text-[10px] text-emerald-700">Entrada integral no Caixa</span>
+                </div>
+                {paymentStatus === 'paid' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentStatus('partial');
+                  if (!amountPaid || amountPaid === '0') {
+                    setAmountPaid(String(Math.round(grandTotal / 2)));
+                  }
+                }}
+                className={`p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                  paymentStatus === 'partial'
+                    ? 'bg-amber-50/90 border-amber-400 text-amber-900 ring-2 ring-amber-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <div>
+                  <span className="font-extrabold text-xs block">Pagamento Parcial</span>
+                  <span className="text-[10px] text-amber-700">Entrada / Sinal pago</span>
+                </div>
+                {paymentStatus === 'partial' && <Clock className="w-4 h-4 text-amber-600 shrink-0" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Forma de Pagamento
+              </label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-[#0754D8]"
+              >
+                <option value="Pix">Pix (Instantâneo)</option>
+                <option value="Dinheiro">Dinheiro em Espécie</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="Cartão de Débito">Cartão de Débito</option>
+                <option value="Transferência Bancária">Transferência Bancária</option>
+                <option value="Boleto Bancário">Boleto Bancário</option>
+                <option value="A Combinar">A Combinar / Faturado</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Valor Efetivamente Pago na Abertura (R$)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">R$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(e.target.value)}
+                  placeholder="0,00"
+                  className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-extrabold text-emerald-700 bg-white focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            {paymentStatus === 'paid'
+              ? '✓ O valor total será lançado imediatamente como receita paga no Fluxo de Caixa da MG Climatização.'
+              : paymentStatus === 'partial'
+              ? '✓ O valor pago entrará nas receitas do caixa e a diferença constará em "A Receber".'
+              : '✓ O valor total constará como pendência em "A Receber" no Fluxo de Caixa até o pagamento ser registrado.'}
+          </p>
         </div>
 
         {/* BOTÕES DE SUBMISSÃO */}

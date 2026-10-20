@@ -1,0 +1,81 @@
+/* Estilos exclusivos da landing page pública (/site) */
+
+.mg-site {
+  overflow-x: clip;
+}
+
+/* Revelação suave ao rolar */
+.mg-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.mg-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Fundo do hero com grade sutil */
+.mg-hero-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 30% 40%, black 30%, transparent 75%);
+}
+
+/* Brilho flutuante */
+@keyframes mg-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.mg-float { animation: mg-float 6s ease-in-out infinite; }
+.mg-float-delay { animation: mg-float 7s ease-in-out 1.5s infinite; }
+
+/* Partículas de ar frio */
+@keyframes mg-breeze {
+  0% { transform: translateX(-10%) scaleX(0.6); opacity: 0; }
+  30% { opacity: 0.55; }
+  100% { transform: translateX(120%) scaleX(1); opacity: 0; }
+}
+.mg-breeze {
+  position: absolute;
+  height: 2px;
+  width: 40%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, rgba(186, 220, 255, 0.9), transparent);
+  animation: mg-breeze 5s linear infinite;
+}
+
+/* Pulso do botão do WhatsApp */
+@keyframes mg-pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+.mg-pulse::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #25d366;
+  animation: mg-pulse-ring 2s ease-out infinite;
+  z-index: -1;
+}
+
+/* Texto em gradiente */
+.mg-gradient-text {
+  background: linear-gradient(100deg, #ffffff 0%, #9cc8ff 60%, #5aa2ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* FAQ */
+.mg-faq summary::-webkit-details-marker { display: none; }
+.mg-faq[open] .mg-faq-icon { transform: rotate(45deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-reveal { opacity: 1; transform: none; transition: none; }
+  .mg-float, .mg-float-delay, .mg-breeze, .mg-pulse::before { animation: none; }
+}

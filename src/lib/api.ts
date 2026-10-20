@@ -1,4 +1,19 @@
-import { supabase } from './supabase';
+import { db } from './firebase';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit as firestoreLimit,
+  writeBatch,
+} from 'firebase/firestore';
 import {
   Customer,
   CustomerAddress,
@@ -7,6 +22,8 @@ import {
   Appointment,
   AppointmentStatus,
   ServiceOrder,
+  ServiceOrderStatus,
+  PaymentStatus,
   CompanySettings,
   Quote,
   QuoteItem,
@@ -28,6 +45,7 @@ import {
   PMOCPlan,
   PMOCPeriodicity,
   PMOCEquipment,
+  ServiceCategory,
 } from './types';
 import { calculateNextCleaningDate } from './formatters';
 
@@ -35,60 +53,154 @@ import { calculateNextCleaningDate } from './formatters';
 // CONFIGURAÇÕES DA EMPRESA
 // ==========================================
 export async function getCompanySettings(): Promise<CompanySettings | null> {
-  const { data, error } = await supabase
-    .from('mg_company_settings')
-    .select('*')
-    .limit(1)
-    .single();
+  try {
+    const colRef = collection(db, 'company_settings');
+    const snap = await getDocs(query(colRef, firestoreLimit(1)));
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      return { id: d.id, ...(d.data() as any) } as CompanySettings;
+    }
 
-  if (error && error.code !== 'PGRST116') {
-    console.error('Erro ao buscar configurações:', error);
+    const defaultSettings: Omit<CompanySettings, 'id'> = {
+      name: 'MG Climatização & Elétrica Residencial',
+      slogan: 'Especialistas em Conforto Térmico & Segurança Elétrica',
+      cnpj_cpf: '45.123.456/0001-78',
+      phone: '(92) 99123-4567',
+      whatsapp: '5592991234567',
+      email: 'contato@mgclimatizacao.com.br',
+      address: 'Rua Principal, 100 - Adrianópolis, Manaus - AM',
+      default_maintenance_interval_months: 6,
+    };
+
+    const newDoc = await addDoc(colRef, defaultSettings);
+    return { id: newDoc.id, ...defaultSettings };
+  } catch (err) {
+    console.error('Erro ao buscar configurações da empresa:', err);
+    return null;
   }
-  return data || null;
+}
+
+export async function updateCompanySettings(
+  id: string,
+  updates: Partial<CompanySettings>
+): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'company_settings', id);
+    await updateDoc(docRef, { ...updates, updated_at: new Date().toISOString() });
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar configurações da empresa:', err);
+    return false;
+  }
 }
 
 // ==========================================
-// CLIENTES
+// GERADOR DE CÓDIGO SEQUENCIAL
+// ==========================================
+async function getNextSequentialCode(
+  collectionName: string,
+  prefix: string,
+  padLength = 4
+): Promise<string> {
+  try {
+    const year = new Date().getFullYear();
+    const yearPrefix = `${prefix}-${year}-`;
+    const colRef = collection(db, collectionName);
+    const snap = await getDocs(colRef);
+
+    let maxSeq = 0;
+    snap.forEach((d) => {
+      const code = (d.data() as any).code;
+      if (typeof code === 'string' && code.startsWith(yearPrefix)) {
+        const parts = code.split('-');
+        const seq = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(seq) && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    });
+
+    const nextSeq = maxSeq + 1;
+    return `${yearPrefix}${String(nextSeq).padStart(padLength, '0')}`;
+  } catch (err) {
+    console.error(`Erro ao gerar código para ${collectionName}:`, err);
+    const fallbackSeq = Math.floor(Math.random() * 9000) + 1000;
+    return `${prefix}-${new Date().getFullYear()}-${fallbackSeq}`;
+  }
+}
+
+// ==========================================
+// CLIENTES & ENDEREÇOS
 // ==========================================
 export async function getCustomers(searchQuery?: string): Promise<Customer[]> {
-  let query = supabase
-    .from('mg_customers')
-    .select(`
-      *,
-      addresses:mg_customer_addresses(*),
-      equipment:mg_equipment(*)
-    `)
-    .order('name', { ascending: true });
+  try {
+    const customersSnap = await getDocs(collection(db, 'customers'));
+    const addressesSnap = await getDocs(collection(db, 'customer_addresses'));
+    const equipmentSnap = await getDocs(collection(db, 'equipment'));
 
-  if (searchQuery && searchQuery.trim()) {
-    const term = `%${searchQuery.trim()}%`;
-    query = query.or(`name.ilike.${term},phone.ilike.${term},document_cpf_cnpj.ilike.${term}`);
-  }
+    const addressesByCustomer: Record<string, CustomerAddress[]> = {};
+    addressesSnap.forEach((d) => {
+      const addr = { id: d.id, ...(d.data() as any) } as CustomerAddress;
+      if (!addressesByCustomer[addr.customer_id]) addressesByCustomer[addr.customer_id] = [];
+      addressesByCustomer[addr.customer_id].push(addr);
+    });
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar clientes:', error);
+    const equipmentByCustomer: Record<string, Equipment[]> = {};
+    equipmentSnap.forEach((d) => {
+      const eq = { id: d.id, ...(d.data() as any) } as Equipment;
+      if (!equipmentByCustomer[eq.customer_id]) equipmentByCustomer[eq.customer_id] = [];
+      equipmentByCustomer[eq.customer_id].push(eq);
+    });
+
+    let customers: Customer[] = [];
+    customersSnap.forEach((d) => {
+      const cust = { id: d.id, ...(d.data() as any) } as Customer;
+      cust.addresses = addressesByCustomer[cust.id] || [];
+      cust.equipment = equipmentByCustomer[cust.id] || [];
+      customers.push(cust);
+    });
+
+    customers.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+    if (searchQuery && searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      customers = customers.filter(
+        (c) =>
+          c.name?.toLowerCase().includes(q) ||
+          c.phone?.includes(q) ||
+          c.whatsapp?.includes(q) ||
+          c.document_cpf_cnpj?.includes(q) ||
+          c.email?.toLowerCase().includes(q)
+      );
+    }
+
+    return customers;
+  } catch (err) {
+    console.error('Erro ao buscar clientes:', err);
     return [];
   }
-  return data as Customer[];
 }
 
 export async function getCustomerById(id: string): Promise<Customer | null> {
-  const { data, error } = await supabase
-    .from('mg_customers')
-    .select(`
-      *,
-      addresses:mg_customer_addresses(*),
-      equipment:mg_equipment(*)
-    `)
-    .eq('id', id)
-    .single();
+  try {
+    const custDoc = await getDoc(doc(db, 'customers', id));
+    if (!custDoc.exists()) return null;
 
-  if (error) {
-    console.error('Erro ao buscar cliente:', error);
+    const customer = { id: custDoc.id, ...(custDoc.data() as any) } as Customer;
+
+    const [addrSnap, eqSnap] = await Promise.all([
+      getDocs(query(collection(db, 'customer_addresses'), where('customer_id', '==', id))),
+      getDocs(query(collection(db, 'equipment'), where('customer_id', '==', id))),
+    ]);
+
+    customer.addresses = addrSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    customer.equipment = eqSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+
+    return customer;
+  } catch (err) {
+    console.error('Erro ao buscar cliente por ID:', err);
     return null;
   }
-  return data as Customer;
 }
 
 export async function createCustomer(payload: {
@@ -99,72 +211,93 @@ export async function createCustomer(payload: {
   document_cpf_cnpj?: string;
   origin?: string;
   notes?: string;
-  initialAddress?: {
+  address?: {
     street: string;
     number: string;
+    complement?: string;
     neighborhood?: string;
     city?: string;
     state?: string;
     zip_code?: string;
     reference_point?: string;
-    complement?: string;
     label?: string;
   };
-}): Promise<Customer | null> {
-  const { initialAddress, ...customerData } = payload;
+  initialAddress?: {
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    reference_point?: string;
+    label?: string;
+  };
+}): Promise<Customer> {
+  const now = new Date().toISOString();
+  const custData = {
+    name: payload.name,
+    phone: payload.phone || null,
+    whatsapp: payload.whatsapp || null,
+    email: payload.email || null,
+    document_cpf_cnpj: payload.document_cpf_cnpj || null,
+    origin: payload.origin || 'indicacao',
+    notes: payload.notes || null,
+    status: 'active',
+    created_at: now,
+    updated_at: now,
+  };
 
-  const { data: customer, error } = await supabase
-    .from('mg_customers')
-    .insert([customerData])
-    .select()
-    .single();
+  const custRef = await addDoc(collection(db, 'customers'), custData);
+  const customerId = custRef.id;
 
-  if (error || !customer) {
-    console.error('Erro ao criar cliente:', error);
-    throw new Error(error?.message || 'Falha ao salvar cliente');
+  const addrObj = payload.address || payload.initialAddress;
+  const addresses: CustomerAddress[] = [];
+  if (addrObj && addrObj.street) {
+    const addrData = {
+      customer_id: customerId,
+      label: 'Principal',
+      street: addrObj.street,
+      number: addrObj.number || 'S/N',
+      complement: addrObj.complement || null,
+      neighborhood: addrObj.neighborhood || null,
+      city: addrObj.city || 'Manaus',
+      state: addrObj.state || 'AM',
+      zip_code: addrObj.zip_code || null,
+      reference_point: addrObj.reference_point || null,
+      is_primary: true,
+      created_at: now,
+    };
+    const addrRef = await addDoc(collection(db, 'customer_addresses'), addrData);
+    addresses.push({ id: addrRef.id, ...addrData });
   }
 
-  // Se tiver endereço inicial
-  if (initialAddress && initialAddress.street && initialAddress.number) {
-    await supabase.from('mg_customer_addresses').insert([
-      {
-        customer_id: customer.id,
-        label: initialAddress.label || 'Principal',
-        street: initialAddress.street,
-        number: initialAddress.number,
-        neighborhood: initialAddress.neighborhood || '',
-        city: initialAddress.city || 'Manaus',
-        state: initialAddress.state || 'AM',
-        zip_code: initialAddress.zip_code,
-        reference_point: initialAddress.reference_point,
-        complement: initialAddress.complement,
-        is_primary: true,
-      },
-    ]);
-  }
-
-  return customer as Customer;
+  return {
+    id: customerId,
+    ...custData,
+    status: 'active',
+    addresses,
+    equipment: [],
+  };
 }
 
 export async function updateCustomer(id: string, updates: Partial<Customer>): Promise<boolean> {
-  const { error } = await supabase
-    .from('mg_customers')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  if (error) {
-    console.error('Erro ao atualizar cliente:', error);
+  try {
+    const docRef = doc(db, 'customers', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).addresses;
+    delete (cleanUpdates as any).equipment;
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar cliente:', err);
     return false;
   }
-  return true;
 }
 
-// ==========================================
-// ENDEREÇOS DE CLIENTES
-// ==========================================
 export async function addCustomerAddress(address: {
   customer_id: string;
-  label?: string;
+  label: string;
   street: string;
   number: string;
   complement?: string;
@@ -173,605 +306,901 @@ export async function addCustomerAddress(address: {
   state?: string;
   zip_code?: string;
   reference_point?: string;
-  access_notes?: string;
   is_primary?: boolean;
-}): Promise<CustomerAddress | null> {
-  const { data, error } = await supabase
-    .from('mg_customer_addresses')
-    .insert([address])
-    .select()
-    .single();
+}): Promise<CustomerAddress> {
+  const now = new Date().toISOString();
+  const addrData = {
+    customer_id: address.customer_id,
+    label: address.label || 'Endereço',
+    street: address.street,
+    number: address.number || 'S/N',
+    complement: address.complement || null,
+    neighborhood: address.neighborhood || null,
+    city: address.city || 'Manaus',
+    state: address.state || 'AM',
+    zip_code: address.zip_code || null,
+    reference_point: address.reference_point || null,
+    is_primary: address.is_primary ?? false,
+    created_at: now,
+  };
+  const docRef = await addDoc(collection(db, 'customer_addresses'), addrData);
+  return { id: docRef.id, ...addrData };
+}
 
-  if (error) {
-    console.error('Erro ao adicionar endereço:', error);
-    throw new Error(error.message);
+export async function deleteCustomer(id: string): Promise<boolean> {
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'customers', id));
+
+    const [addrSnap, eqSnap] = await Promise.all([
+      getDocs(query(collection(db, 'customer_addresses'), where('customer_id', '==', id))),
+      getDocs(query(collection(db, 'equipment'), where('customer_id', '==', id))),
+    ]);
+
+    addrSnap.forEach((d) => batch.delete(d.ref));
+    eqSnap.forEach((d) => batch.delete(d.ref));
+
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir cliente:', err);
+    return false;
   }
-  return data as CustomerAddress;
 }
 
 // ==========================================
-// EQUIPAMENTOS (AR-CONDICIONADO)
+// AR-CONDICIONADO & EQUIPAMENTOS
 // ==========================================
 export async function getEquipment(filters?: {
   customerId?: string;
+  status?: string;
 }): Promise<Equipment[]> {
-  let query = supabase
-    .from('mg_equipment')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*)
-    `)
-    .order('next_cleaning_date', { ascending: true, nullsFirst: false });
+  try {
+    const colRef = collection(db, 'equipment');
+    let snap;
+    if (filters?.customerId) {
+      snap = await getDocs(query(colRef, where('customer_id', '==', filters.customerId)));
+    } else {
+      snap = await getDocs(colRef);
+    }
 
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId);
-  }
+    const [custSnap, addrSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'customer_addresses')),
+    ]);
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar equipamentos:', error);
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const addrMap: Record<string, CustomerAddress> = {};
+    addrSnap.forEach((d) => (addrMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    let list: Equipment[] = [];
+    snap.forEach((d) => {
+      const eq = { id: d.id, ...(d.data() as any) } as Equipment;
+      eq.customer = custMap[eq.customer_id];
+      if (eq.address_id) eq.address = addrMap[eq.address_id];
+      list.push(eq);
+    });
+
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((e) => e.status === filters.status);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar equipamentos:', err);
     return [];
   }
-  return data as Equipment[];
 }
 
 export async function createEquipment(payload: {
   customer_id: string;
-  address_id?: string | null;
+  address_id?: string;
   environment: string;
-  type?: string;
+  type: string;
   brand?: string;
   model?: string;
   btu_capacity?: number;
   serial_number?: string;
+  installation_date?: string;
   last_cleaning_date?: string;
   maintenance_interval_months?: number;
   notes?: string;
-}): Promise<Equipment | null> {
+}): Promise<Equipment> {
   const interval = payload.maintenance_interval_months || 6;
-  let nextDate: string | null = null;
+  const lastCleaning = payload.last_cleaning_date || new Date().toISOString().split('T')[0];
+  const nextCleaning = calculateNextCleaningDate(lastCleaning, interval);
+  const now = new Date().toISOString();
 
-  if (payload.last_cleaning_date) {
-    nextDate = calculateNextCleaningDate(payload.last_cleaning_date, interval);
+  const eqData = {
+    customer_id: payload.customer_id,
+    address_id: payload.address_id || null,
+    environment: payload.environment,
+    type: payload.type,
+    brand: payload.brand || null,
+    model: payload.model || null,
+    btu_capacity: payload.btu_capacity || null,
+    serial_number: payload.serial_number || null,
+    installation_date: payload.installation_date || null,
+    last_cleaning_date: lastCleaning,
+    maintenance_interval_months: interval,
+    next_cleaning_date: nextCleaning,
+    notes: payload.notes || null,
+    status: 'active',
+    created_at: now,
+    updated_at: now,
+  };
+
+  const docRef = await addDoc(collection(db, 'equipment'), eqData);
+  const eqId = docRef.id;
+
+  try {
+    await addDoc(collection(db, 'maintenance_reminders'), {
+      equipment_id: eqId,
+      customer_id: payload.customer_id,
+      scheduled_for_date: nextCleaning,
+      status: 'pending',
+      created_at: now,
+      updated_at: now,
+    });
+  } catch (e) {
+    console.warn('Falha ao criar lembrete de manutenção inicial:', e);
   }
 
-  const { data, error } = await supabase
-    .from('mg_equipment')
-    .insert([
-      {
-        ...payload,
-        type: payload.type || 'split',
-        maintenance_interval_months: interval,
-        next_cleaning_date: nextDate,
-        status: 'active',
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Erro ao cadastrar equipamento:', error);
-    throw new Error(error.message);
-  }
-  return data as Equipment;
+  return { id: eqId, ...(eqData as any) };
 }
 
-export async function updateEquipment(
-  id: string,
-  updates: Partial<Equipment>
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('mg_equipment')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  if (error) {
-    console.error('Erro ao atualizar equipamento:', error);
+export async function updateEquipment(id: string, updates: Partial<Equipment>): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'equipment', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).customer;
+    delete (cleanUpdates as any).address;
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar equipamento:', err);
     return false;
   }
-  return true;
+}
+
+export async function deleteEquipment(id: string): Promise<boolean> {
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'equipment', id));
+
+    const [remSnap, pmocSnap] = await Promise.all([
+      getDocs(query(collection(db, 'maintenance_reminders'), where('equipment_id', '==', id))),
+      getDocs(query(collection(db, 'pmoc_equipment'), where('equipment_id', '==', id))),
+    ]);
+
+    remSnap.forEach((d) => batch.delete(d.ref));
+    pmocSnap.forEach((d) => batch.delete(d.ref));
+
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir equipamento:', err);
+    return false;
+  }
 }
 
 // ==========================================
 // CATÁLOGO DE SERVIÇOS
 // ==========================================
-export async function getServiceCatalog(category?: 'climatizacao' | 'eletrica'): Promise<ServiceCatalogItem[]> {
-  let query = supabase
-    .from('mg_service_catalog')
-    .select('*')
-    .eq('status', 'active')
-    .order('category', { ascending: true })
-    .order('name', { ascending: true });
+export async function getServiceCatalog(
+  category?: 'climatizacao' | 'eletrica'
+): Promise<ServiceCatalogItem[]> {
+  try {
+    const colRef = collection(db, 'service_catalog');
+    const snap = await getDocs(colRef);
+    let items: ServiceCatalogItem[] = [];
+    snap.forEach((d) => items.push({ id: d.id, ...(d.data() as any) }));
 
-  if (category) {
-    query = query.eq('category', category);
-  }
+    if (category) {
+      items = items.filter((i) => i.category === category);
+    }
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar catálogo de serviços:', error);
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    return items;
+  } catch (err) {
+    console.error('Erro ao buscar catálogo de serviços:', err);
     return [];
   }
-  return data as ServiceCatalogItem[];
 }
 
 export async function createServiceCatalogItem(item: {
   name: string;
-  category: 'climatizacao' | 'eletrica';
+  category: ServiceCategory;
   description?: string;
   default_price: number;
-  estimated_duration_min?: number;
-}): Promise<ServiceCatalogItem | null> {
-  const { data, error } = await supabase
-    .from('mg_service_catalog')
-    .insert([item])
-    .select()
-    .single();
+  estimated_duration_min: number;
+}): Promise<ServiceCatalogItem> {
+  const itemData = {
+    ...item,
+    status: 'active',
+    created_at: new Date().toISOString(),
+  };
+  const docRef = await addDoc(collection(db, 'service_catalog'), itemData);
+  return { id: docRef.id, ...(itemData as any) };
+}
 
-  if (error) {
-    console.error('Erro ao criar serviço:', error);
-    throw new Error(error.message);
+export async function updateServiceCatalogItem(
+  id: string,
+  updates: Partial<ServiceCatalogItem>
+): Promise<boolean> {
+  try {
+    await updateDoc(doc(db, 'service_catalog', id), updates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar item do catálogo:', err);
+    return false;
   }
-  return data as ServiceCatalogItem;
+}
+
+export async function deleteServiceCatalogItem(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'service_catalog', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir serviço do catálogo:', err);
+    return false;
+  }
 }
 
 // ==========================================
-// AGENDA & AGENDAMENTOS
+// AGENDA TÉCNICA (COMPROMISSOS)
 // ==========================================
 export async function getAppointments(filters?: {
   date?: string;
   status?: string;
+  customerId?: string;
 }): Promise<Appointment[]> {
-  let query = supabase
-    .from('mg_appointments')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*),
-      equipment:mg_equipment(*)
-    `)
-    .order('scheduled_date', { ascending: true })
-    .order('scheduled_time', { ascending: true });
+  try {
+    const snap = await getDocs(collection(db, 'appointments'));
+    const [custSnap, addrSnap, eqSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'customer_addresses')),
+      getDocs(collection(db, 'equipment')),
+    ]);
 
-  if (filters?.date) {
-    query = query.eq('scheduled_date', filters.date);
-  }
-  if (filters?.status) {
-    query = query.eq('status', filters.status);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar agendamentos:', error);
+    const addrMap: Record<string, CustomerAddress> = {};
+    addrSnap.forEach((d) => (addrMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    let list: Appointment[] = [];
+    snap.forEach((d) => {
+      const app = { id: d.id, ...(d.data() as any) } as Appointment;
+      app.customer = custMap[app.customer_id];
+      if (app.address_id) app.address = addrMap[app.address_id];
+      if (app.equipment_id) app.equipment = eqMap[app.equipment_id];
+      list.push(app);
+    });
+
+    if (filters?.date) {
+      list = list.filter((a) => a.scheduled_date === filters.date);
+    }
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((a) => a.status === filters.status);
+    }
+    if (filters?.customerId) {
+      list = list.filter((a) => a.customer_id === filters.customerId);
+    }
+
+    list.sort((a, b) => {
+      const cmpDate = (a.scheduled_date || '').localeCompare(b.scheduled_date || '');
+      if (cmpDate !== 0) return cmpDate;
+      return (a.scheduled_time || '').localeCompare(b.scheduled_time || '');
+    });
+
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar agenda técnica:', err);
     return [];
   }
-  return data as Appointment[];
 }
 
 export async function createAppointment(payload: {
   customer_id: string;
-  address_id?: string | null;
-  equipment_id?: string | null;
+  address_id?: string;
+  equipment_id?: string;
   title: string;
-  category: 'climatizacao' | 'eletrica';
+  category: ServiceCategory;
   scheduled_date: string;
   scheduled_time: string;
   estimated_duration_min?: number;
   technician_name?: string;
   notes?: string;
   status?: AppointmentStatus;
-}): Promise<Appointment | null> {
-  const { data, error } = await supabase
-    .from('mg_appointments')
-    .insert([
-      {
-        ...payload,
-        status: payload.status || 'confirmed',
-      },
-    ])
-    .select()
-    .single();
+}): Promise<Appointment> {
+  const now = new Date().toISOString();
+  const appData = {
+    customer_id: payload.customer_id,
+    address_id: payload.address_id || null,
+    equipment_id: payload.equipment_id || null,
+    title: payload.title,
+    category: payload.category || 'climatizacao',
+    scheduled_date: payload.scheduled_date,
+    scheduled_time: payload.scheduled_time,
+    estimated_duration_min: payload.estimated_duration_min || 60,
+    technician_name: payload.technician_name || 'Técnico Especializado',
+    notes: payload.notes || null,
+    status: (payload.status || 'confirmed') as AppointmentStatus,
+    created_at: now,
+    updated_at: now,
+  };
 
-  if (error) {
-    console.error('Erro ao criar agendamento:', error);
-    throw new Error(error.message);
-  }
-  return data as Appointment;
+  const docRef = await addDoc(collection(db, 'appointments'), appData);
+  return { id: docRef.id, ...(appData as any) };
 }
 
-export async function updateAppointmentStatus(id: string, status: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('mg_appointments')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id);
+export async function updateAppointmentStatus(
+  id: string,
+  status: string | AppointmentStatus
+): Promise<boolean> {
+  try {
+    await updateDoc(doc(db, 'appointments', id), {
+      status,
+      updated_at: new Date().toISOString(),
+    });
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar status do agendamento:', err);
+    return false;
+  }
+}
 
-  return !error;
+export async function updateAppointment(
+  id: string,
+  updates: Partial<Appointment>
+): Promise<boolean> {
+  try {
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).customer;
+    delete (cleanUpdates as any).address;
+    delete (cleanUpdates as any).equipment;
+    await updateDoc(doc(db, 'appointments', id), cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar agendamento:', err);
+    return false;
+  }
 }
 
 // ==========================================
-// ORDENS DE SERVIÇO
+// ORDENS DE SERVIÇO (O.S.)
 // ==========================================
 export async function getNextOrderCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const { count, error } = await supabase
-    .from('mg_service_orders')
-    .select('*', { count: 'exact', head: true });
-
-  const nextSeq = (count || 0) + 1;
-  return `OS-${year}-${String(nextSeq).padStart(4, '0')}`;
+  return getNextSequentialCode('service_orders', 'OS');
 }
 
 export async function getServiceOrders(filters?: {
   status?: string;
   customerId?: string;
 }): Promise<ServiceOrder[]> {
-  let query = supabase
-    .from('mg_service_orders')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*),
-      equipment:mg_equipment(*),
-      items:mg_service_order_items(*)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'service_orders'));
+    const [custSnap, addrSnap, eqSnap, itemsSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'customer_addresses')),
+      getDocs(collection(db, 'equipment')),
+      getDocs(collection(db, 'service_order_items')),
+    ]);
 
-  if (filters?.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status);
-  }
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar ordens de serviço:', error);
+    const addrMap: Record<string, CustomerAddress> = {};
+    addrSnap.forEach((d) => (addrMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const itemsByOrder: Record<string, any[]> = {};
+    itemsSnap.forEach((d) => {
+      const it = { id: d.id, ...(d.data() as any) };
+      if (!itemsByOrder[it.service_order_id]) itemsByOrder[it.service_order_id] = [];
+      itemsByOrder[it.service_order_id].push(it);
+    });
+
+    let list: ServiceOrder[] = [];
+    snap.forEach((d) => {
+      const order = { id: d.id, ...(d.data() as any) } as ServiceOrder;
+      order.customer = custMap[order.customer_id];
+      if (order.address_id) order.address = addrMap[order.address_id];
+      if (order.equipment_id) order.equipment = eqMap[order.equipment_id];
+      order.items = itemsByOrder[order.id] || (order as any).embedded_items || [];
+      list.push(order);
+    });
+
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((o) => o.status === filters.status);
+    }
+    if (filters?.customerId) {
+      list = list.filter((o) => o.customer_id === filters.customerId);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar ordens de serviço:', err);
     return [];
   }
-  return data as ServiceOrder[];
 }
 
 export async function getServiceOrderById(id: string): Promise<ServiceOrder | null> {
-  const { data, error } = await supabase
-    .from('mg_service_orders')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*),
-      equipment:mg_equipment(*),
-      items:mg_service_order_items(*)
-    `)
-    .eq('id', id)
-    .single();
+  try {
+    const orderDoc = await getDoc(doc(db, 'service_orders', id));
+    if (!orderDoc.exists()) return null;
 
-  if (error) {
-    console.error('Erro ao buscar ordem de serviço:', error);
+    const order = { id: orderDoc.id, ...(orderDoc.data() as any) } as ServiceOrder;
+
+    const [cust, addr, eq, itemsSnap] = await Promise.all([
+      getCustomerById(order.customer_id),
+      order.address_id
+        ? getDoc(doc(db, 'customer_addresses', order.address_id))
+        : Promise.resolve(null),
+      order.equipment_id ? getDoc(doc(db, 'equipment', order.equipment_id)) : Promise.resolve(null),
+      getDocs(query(collection(db, 'service_order_items'), where('service_order_id', '==', id))),
+    ]);
+
+    order.customer = cust || undefined;
+    if (addr && addr.exists()) order.address = { id: addr.id, ...(addr.data() as any) };
+    if (eq && eq.exists()) order.equipment = { id: eq.id, ...(eq.data() as any) };
+
+    const fetchedItems = itemsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    order.items = fetchedItems.length > 0 ? fetchedItems : (order as any).embedded_items || [];
+
+    return order;
+  } catch (err) {
+    console.error('Erro ao buscar ordem de serviço por ID:', err);
     return null;
   }
-  return data as ServiceOrder;
 }
 
 export async function createServiceOrder(payload: {
   customer_id: string;
-  address_id?: string | null;
-  equipment_id?: string | null;
-  appointment_id?: string | null;
-  category: 'climatizacao' | 'eletrica';
+  address_id?: string;
+  equipment_id?: string;
+  appointment_id?: string;
+  category: ServiceCategory;
   problem_description?: string;
-  technical_diagnosis?: string;
-  is_cleaning?: boolean;
-  scheduled_date?: string;
   technician_name?: string;
+  scheduled_date?: string;
+  is_cleaning?: boolean;
+  payment_status?: PaymentStatus;
+  payment_method?: string;
+  amount_paid?: number;
   total_services?: number;
   total_materials?: number;
   discount?: number;
   total_amount?: number;
-  checklist_data?: Record<string, boolean | string>;
   items?: Array<{
     item_type: 'service' | 'material';
-    catalog_service_id?: string;
     name: string;
     quantity: number;
     unit_price: number;
-    total_price: number;
   }>;
-}): Promise<ServiceOrder | null> {
+}): Promise<ServiceOrder> {
   const code = await getNextOrderCode();
-  const { items, ...orderData } = payload;
+  const now = new Date().toISOString();
 
-  const { data: order, error } = await supabase
-    .from('mg_service_orders')
-    .insert([
-      {
-        ...orderData,
-        code,
-        status: 'open',
-        total_amount: orderData.total_amount || 0,
-        payment_status: 'pending',
-      },
-    ])
-    .select()
-    .single();
+  let totalServices = payload.total_services || 0;
+  let totalMaterials = payload.total_materials || 0;
 
-  if (error || !order) {
-    console.error('Erro ao criar OS:', error);
-    throw new Error(error?.message || 'Falha ao salvar OS');
+  if (payload.items && payload.items.length > 0) {
+    totalServices = 0;
+    totalMaterials = 0;
+    payload.items.forEach((i) => {
+      const subtotal = i.quantity * i.unit_price;
+      if (i.item_type === 'service') totalServices += subtotal;
+      else totalMaterials += subtotal;
+    });
   }
 
-  // Inserir itens se houver
-  if (items && items.length > 0) {
-    const itemsToInsert = items.map((i) => ({
-      service_order_id: order.id,
-      ...i,
-    }));
-    await supabase.from('mg_service_order_items').insert(itemsToInsert);
+  const totalAmount = payload.total_amount ?? totalServices + totalMaterials;
+  const amountPaid = payload.amount_paid || 0;
+  const paymentStatus: PaymentStatus =
+    payload.payment_status || (amountPaid >= totalAmount && totalAmount > 0 ? 'paid' : 'pending');
+
+  const orderData = {
+    code,
+    customer_id: payload.customer_id,
+    address_id: payload.address_id || null,
+    equipment_id: payload.equipment_id || null,
+    appointment_id: payload.appointment_id || null,
+    category: payload.category || 'climatizacao',
+    status: 'open' as ServiceOrderStatus,
+    problem_description: payload.problem_description || null,
+    technician_name: payload.technician_name || 'Técnico Especializado',
+    scheduled_date: payload.scheduled_date || now.split('T')[0],
+    is_cleaning: payload.is_cleaning ?? false,
+    total_services: totalServices,
+    total_materials: totalMaterials,
+    discount: 0,
+    total_amount: totalAmount,
+    payment_status: paymentStatus,
+    payment_method: payload.payment_method || null,
+    amount_paid: amountPaid,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const docRef = await addDoc(collection(db, 'service_orders'), orderData);
+  const orderId = docRef.id;
+
+  const savedItems: any[] = [];
+  if (payload.items && payload.items.length > 0) {
+    for (const it of payload.items) {
+      const itemRecord = {
+        service_order_id: orderId,
+        item_type: it.item_type,
+        name: it.name,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        total_price: it.quantity * it.unit_price,
+      };
+      const itemDoc = await addDoc(collection(db, 'service_order_items'), itemRecord);
+      savedItems.push({ id: itemDoc.id, ...itemRecord });
+    }
   }
 
-  return order as ServiceOrder;
-}
-
-/**
- * Concluir Ordem de Serviço com Regra de Negócio Crucial:
- * Se a OS for de higienização/limpeza de ar-condicionado (`is_cleaning === true`) e tiver `equipment_id`,
- * atualiza automaticamente a data de última limpeza do equipamento e recalcula a próxima limpeza!
- */
-export async function completeServiceOrder(
-  id: string,
-  closingData: {
-    technical_diagnosis?: string;
-    technical_notes?: string;
-    client_recommendations?: string;
-    payment_status?: 'pending' | 'partial' | 'paid';
-    payment_method?: string;
-    amount_paid?: number;
-    warranty_terms?: string;
-    checklist_data?: Record<string, boolean | string>;
-  }
-): Promise<boolean> {
-  // 1. Obter a OS atual para checar equipamento e se é limpeza
-  const order = await getServiceOrderById(id);
-  if (!order) throw new Error('Ordem de serviço não encontrada.');
-
-  const completedAt = new Date().toISOString();
-  const todayDateStr = completedAt.split('T')[0];
-
-  // 2. Atualizar OS para 'completed'
-  const { error: orderError } = await supabase
-    .from('mg_service_orders')
-    .update({
-      ...closingData,
-      status: 'completed',
-      completed_at: completedAt,
-      updated_at: completedAt,
-    })
-    .eq('id', id);
-
-  if (orderError) {
-    console.error('Erro ao concluir OS:', orderError);
-    return false;
-  }
-
-  // 3. Regra de Negócio: Atualizar equipamento se for limpeza de ar-condicionado
-  if (order.is_cleaning && order.equipment_id) {
-    const { data: eq } = await supabase
-      .from('mg_equipment')
-      .select('maintenance_interval_months')
-      .eq('id', order.equipment_id)
-      .single();
-
-    const interval = eq?.maintenance_interval_months || 6;
-    const nextDate = calculateNextCleaningDate(todayDateStr, interval);
-
-    await supabase
-      .from('mg_equipment')
-      .update({
-        last_cleaning_date: todayDateStr,
-        last_maintenance_date: todayDateStr,
-        next_cleaning_date: nextDate,
-        updated_at: completedAt,
-      })
-      .eq('id', order.equipment_id);
-  }
-
-  // 4. Integração Financeira Automática: Lançar receita no fluxo de caixa
-  const revenueAmount =
-    closingData.amount_paid && closingData.amount_paid > 0
-      ? closingData.amount_paid
-      : (order.total_amount || 0);
-
-  if (revenueAmount > 0) {
+  if (amountPaid > 0) {
     try {
-      // Verificar se já existe transação vinculada a esta OS para evitar duplicidade
-      const { data: existingTx } = await supabase
-        .from('mg_financial_transactions')
-        .select('id')
-        .eq('service_order_id', id)
-        .limit(1);
-
-      if (!existingTx || existingTx.length === 0) {
-        await supabase.from('mg_financial_transactions').insert([
-          {
-            type: 'income',
-            category: 'servico_os',
-            description: `Recebimento O.S. ${order.code} - ${order.customer?.name || 'Cliente'}`,
-            amount: revenueAmount,
-            payment_method: closingData.payment_method || 'pix',
-            status: closingData.payment_status === 'pending' ? 'pending' : 'paid',
-            transaction_date: todayDateStr,
-            service_order_id: id,
-            customer_id: order.customer_id,
-            notes: `Conclusão e faturamento da O.S. ${order.code}`,
-          },
-        ]);
-      }
-    } catch (err) {
-      console.error('Erro ao sincronizar receita financeira:', err);
+      await addDoc(collection(db, 'financial_transactions'), {
+        service_order_id: orderId,
+        customer_id: payload.customer_id,
+        type: 'income',
+        category: 'servico_os',
+        description: `Recebimento inicial O.S. ${code}`,
+        amount: amountPaid,
+        payment_method: payload.payment_method || 'pix',
+        transaction_date: now.split('T')[0],
+        created_at: now,
+      });
+    } catch (e) {
+      console.warn('Falha ao registrar transação financeira inicial:', e);
     }
   }
-
-  return true;
-}
-
-// ==========================================
-// DASHBOARD RESUMO
-// ==========================================
-export async function getDashboardSummary() {
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Agendamentos de hoje
-  const { data: todayAppointments } = await supabase
-    .from('mg_appointments')
-    .select(`
-      *,
-      customer:mg_customers(name, phone, whatsapp),
-      address:mg_customer_addresses(street, number, neighborhood)
-    `)
-    .eq('scheduled_date', todayStr)
-    .order('scheduled_time', { ascending: true });
-
-  // Ordens em andamento / abertas
-  const { count: openOrdersCount } = await supabase
-    .from('mg_service_orders')
-    .select('*', { count: 'exact', head: true })
-    .in('status', ['open', 'scheduled', 'confirmed', 'in_progress']);
-
-  // Total de clientes ativos
-  const { count: activeCustomersCount } = await supabase
-    .from('mg_customers')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'active');
-
-  // Próximas manutenções preventivas (alertas)
-  const { data: upcomingMaintenance } = await supabase
-    .from('mg_equipment')
-    .select(`
-      *,
-      customer:mg_customers(name, phone, whatsapp),
-      address:mg_customer_addresses(neighborhood, city)
-    `)
-    .not('next_cleaning_date', 'is', null)
-    .order('next_cleaning_date', { ascending: true })
-    .limit(5);
-
-  // Faturamento real do mês
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const { data: completedMonthOrders } = await supabase
-    .from('mg_service_orders')
-    .select('total_amount, amount_paid, payment_status')
-    .eq('status', 'completed')
-    .gte('completed_at', startOfMonth);
-
-  let totalReceivedMonth = 0;
-  let totalPendingMonth = 0;
-
-  if (completedMonthOrders) {
-    for (const ord of completedMonthOrders) {
-      const paid = Number(ord.amount_paid || 0);
-      const total = Number(ord.total_amount || 0);
-      totalReceivedMonth += paid;
-      if (total > paid) {
-        totalPendingMonth += total - paid;
-      }
-    }
-  }
-
-  // Orçamentos aguardando aprovação
-  const { count: pendingQuotesCount } = await supabase
-    .from('mg_quotes')
-    .select('*', { count: 'exact', head: true })
-    .in('status', ['draft', 'sent', 'awaiting_approval']);
-
-  // Produtos com estoque baixo
-  const { data: allProds } = await supabase
-    .from('mg_products')
-    .select('id, quantity, min_stock');
-  const lowStockCount = allProds
-    ? allProds.filter((p) => p.quantity <= p.min_stock).length
-    : 0;
 
   return {
-    todayAppointments: todayAppointments || [],
-    openOrdersCount: openOrdersCount || 0,
-    activeCustomersCount: activeCustomersCount || 0,
-    upcomingMaintenance: upcomingMaintenance || [],
-    totalReceivedMonth,
-    totalPendingMonth,
-    pendingQuotesCount: pendingQuotesCount || 0,
-    lowStockCount,
+    id: orderId,
+    ...(orderData as any),
+    items: savedItems,
   };
 }
 
+export async function updateServiceOrder(
+  id: string,
+  payload: {
+    status?: ServiceOrderStatus;
+    category?: ServiceCategory;
+    problem_description?: string | null;
+    technical_diagnosis?: string | null;
+    checklist_data?: Record<string, boolean | string>;
+    technician_name?: string | null;
+    scheduled_date?: string | null;
+    completed_at?: string | null;
+    is_cleaning?: boolean;
+    discount?: number;
+    total_services?: number;
+    total_materials?: number;
+    total_amount?: number;
+    payment_status?: PaymentStatus;
+    payment_method?: string | null;
+    amount_paid?: number;
+    warranty_terms?: string | null;
+    technical_notes?: string | null;
+    client_recommendations?: string | null;
+    items?: Array<{
+      item_type: 'service' | 'material';
+      name: string;
+      quantity: number;
+      unit_price: number;
+    }>;
+  }
+): Promise<ServiceOrder> {
+  const existing = await getServiceOrderById(id);
+  if (!existing) {
+    throw new Error(`Ordem de Serviço com ID ${id} não encontrada.`);
+  }
+
+  let totalServices = payload.total_services ?? existing.total_services;
+  let totalMaterials = payload.total_materials ?? existing.total_materials;
+
+  if (payload.items) {
+    totalServices = 0;
+    totalMaterials = 0;
+    payload.items.forEach((i) => {
+      const sub = i.quantity * i.unit_price;
+      if (i.item_type === 'service') totalServices += sub;
+      else totalMaterials += sub;
+    });
+
+    const oldItemsSnap = await getDocs(
+      query(collection(db, 'service_order_items'), where('service_order_id', '==', id))
+    );
+    const batch = writeBatch(db);
+    oldItemsSnap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+
+    for (const it of payload.items) {
+      await addDoc(collection(db, 'service_order_items'), {
+        service_order_id: id,
+        item_type: it.item_type,
+        name: it.name,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        total_price: it.quantity * it.unit_price,
+      });
+    }
+  }
+
+  const discount = payload.discount !== undefined ? payload.discount : existing.discount || 0;
+  const totalAmount =
+    payload.total_amount !== undefined
+      ? payload.total_amount
+      : Math.max(0, totalServices + totalMaterials - discount);
+
+  const updateFields: any = {
+    ...payload,
+    total_services: totalServices,
+    total_materials: totalMaterials,
+    total_amount: totalAmount,
+    updated_at: new Date().toISOString(),
+  };
+  delete updateFields.items;
+
+  await updateDoc(doc(db, 'service_orders', id), updateFields);
+
+  if (payload.status === 'completed' && existing.equipment_id) {
+    const compDate = payload.completed_at || new Date().toISOString().split('T')[0];
+    const eq = await getDoc(doc(db, 'equipment', existing.equipment_id));
+    if (eq.exists()) {
+      const interval = (eq.data() as any).maintenance_interval_months || 6;
+      const nextCleaning = calculateNextCleaningDate(compDate, interval);
+      await updateDoc(eq.ref, {
+        last_cleaning_date: compDate,
+        next_cleaning_date: nextCleaning,
+        updated_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  const updatedOrder = await getServiceOrderById(id);
+  if (!updatedOrder) {
+    throw new Error('Falha ao recuperar ordem de serviço atualizada.');
+  }
+  return updatedOrder;
+}
+
+export async function completeServiceOrder(
+  id: string,
+  data: {
+    technical_diagnosis?: string;
+    checklist_data?: Record<string, boolean | string>;
+    client_recommendations?: string;
+    payment_status?: PaymentStatus;
+    payment_method?: string;
+    amount_paid?: number;
+    warranty_terms?: string;
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const res = await updateServiceOrder(id, {
+    status: 'completed',
+    completed_at: now,
+    technical_diagnosis: data.technical_diagnosis,
+    checklist_data: data.checklist_data,
+    client_recommendations: data.client_recommendations,
+    payment_status: data.payment_status || 'paid',
+    payment_method: data.payment_method,
+    amount_paid: data.amount_paid,
+    warranty_terms: data.warranty_terms,
+  });
+
+  return !!res;
+}
+
+export async function deleteServiceOrder(id: string): Promise<boolean> {
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'service_orders', id));
+
+    const [itemsSnap, txSnap, attSnap] = await Promise.all([
+      getDocs(query(collection(db, 'service_order_items'), where('service_order_id', '==', id))),
+      getDocs(
+        query(collection(db, 'financial_transactions'), where('service_order_id', '==', id))
+      ),
+      getDocs(query(collection(db, 'service_attachments'), where('service_order_id', '==', id))),
+    ]);
+
+    itemsSnap.forEach((d) => batch.delete(d.ref));
+    txSnap.forEach((d) => batch.delete(d.ref));
+    attSnap.forEach((d) => batch.delete(d.ref));
+
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir ordem de serviço:', err);
+    return false;
+  }
+}
+
 // ==========================================
-// ORÇAMENTOS
+// RESUMO DO DASHBOARD
+// ==========================================
+export async function getDashboardSummary() {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = `${today.substring(0, 7)}-01`;
+
+    const [appSnap, orderSnap, custSnap, eqSnap, quoteSnap, prodSnap] = await Promise.all([
+      getDocs(collection(db, 'appointments')),
+      getDocs(collection(db, 'service_orders')),
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'equipment')),
+      getDocs(collection(db, 'quotes')),
+      getDocs(collection(db, 'products')),
+    ]);
+
+    const todayAppointments = appSnap.docs.filter((d) => (d.data() as any).scheduled_date === today)
+      .length;
+
+    const openOrdersCount = orderSnap.docs.filter((d) => {
+      const st = (d.data() as any).status;
+      return st !== 'completed' && st !== 'cancelled';
+    }).length;
+
+    const activeCustomersCount = custSnap.docs.filter(
+      (d) => (d.data() as any).status === 'active'
+    ).length;
+
+    const upcomingMaintenance: any[] = [];
+    const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    eqSnap.forEach((d) => {
+      const data = d.data() as any;
+      if (data.next_cleaning_date && data.next_cleaning_date <= in30Days) {
+        upcomingMaintenance.push({ id: d.id, ...data });
+      }
+    });
+
+    let monthlyRevenue = 0;
+    orderSnap.docs.forEach((d) => {
+      const data = d.data() as any;
+      if (data.status === 'completed' && data.completed_at && data.completed_at >= firstDayOfMonth) {
+        monthlyRevenue += data.amount_paid || data.total_amount || 0;
+      }
+    });
+
+    const pendingQuotesCount = quoteSnap.docs.filter(
+      (d) => (d.data() as any).status === 'awaiting_approval'
+    ).length;
+
+    const lowStockProducts: any[] = [];
+    prodSnap.forEach((d) => {
+      const p = d.data() as any;
+      if ((p.quantity || 0) <= (p.min_stock || 0)) {
+        lowStockProducts.push({ id: d.id, ...p });
+      }
+    });
+
+    return {
+      todayAppointments,
+      openOrdersCount,
+      activeCustomersCount,
+      upcomingMaintenanceCount: upcomingMaintenance.length,
+      monthlyRevenue,
+      pendingQuotesCount,
+      lowStockProducts,
+    };
+  } catch (err) {
+    console.error('Erro ao buscar resumo do dashboard:', err);
+    return {
+      todayAppointments: 0,
+      openOrdersCount: 0,
+      activeCustomersCount: 0,
+      upcomingMaintenanceCount: 0,
+      monthlyRevenue: 0,
+      pendingQuotesCount: 0,
+      lowStockProducts: [],
+    };
+  }
+}
+
+// ==========================================
+// ORÇAMENTOS COMERCIAIS
 // ==========================================
 export async function getNextQuoteCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const { count } = await supabase
-    .from('mg_quotes')
-    .select('*', { count: 'exact', head: true });
-
-  const nextSeq = (count || 0) + 1;
-  return `ORC-${year}-${String(nextSeq).padStart(4, '0')}`;
+  return getNextSequentialCode('quotes', 'ORC');
 }
 
 export async function getQuotes(filters?: {
   status?: string;
   customerId?: string;
 }): Promise<Quote[]> {
-  let query = supabase
-    .from('mg_quotes')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*),
-      equipment:mg_equipment(*),
-      items:mg_quote_items(*)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'quotes'));
+    const [custSnap, eqSnap, itemsSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'equipment')),
+      getDocs(collection(db, 'quote_items')),
+    ]);
 
-  if (filters?.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status);
-  }
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar orçamentos:', error);
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const itemsByQuote: Record<string, QuoteItem[]> = {};
+    itemsSnap.forEach((d) => {
+      const it = { id: d.id, ...(d.data() as any) } as QuoteItem;
+      if (!itemsByQuote[it.quote_id]) itemsByQuote[it.quote_id] = [];
+      itemsByQuote[it.quote_id].push(it);
+    });
+
+    let list: Quote[] = [];
+    snap.forEach((d) => {
+      const q = { id: d.id, ...(d.data() as any) } as Quote;
+      q.customer = custMap[q.customer_id];
+      if (q.equipment_id) q.equipment = eqMap[q.equipment_id];
+      q.items = itemsByQuote[q.id] || [];
+      list.push(q);
+    });
+
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((q) => q.status === filters.status);
+    }
+    if (filters?.customerId) {
+      list = list.filter((q) => q.customer_id === filters.customerId);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar orçamentos:', err);
     return [];
   }
-  return data as Quote[];
 }
 
 export async function getQuoteById(id: string): Promise<Quote | null> {
-  const { data, error } = await supabase
-    .from('mg_quotes')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      address:mg_customer_addresses(*),
-      equipment:mg_equipment(*),
-      items:mg_quote_items(*)
-    `)
-    .eq('id', id)
-    .single();
+  try {
+    const docSnap = await getDoc(doc(db, 'quotes', id));
+    if (!docSnap.exists()) return null;
 
-  if (error) {
-    console.error('Erro ao buscar orçamento:', error);
+    const quote = { id: docSnap.id, ...(docSnap.data() as any) } as Quote;
+    const [cust, eq, itemsSnap] = await Promise.all([
+      getCustomerById(quote.customer_id),
+      quote.equipment_id ? getDoc(doc(db, 'equipment', quote.equipment_id)) : Promise.resolve(null),
+      getDocs(query(collection(db, 'quote_items'), where('quote_id', '==', id))),
+    ]);
+
+    quote.customer = cust || undefined;
+    if (eq && eq.exists()) quote.equipment = { id: eq.id, ...(eq.data() as any) };
+    quote.items = itemsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+
+    return quote;
+  } catch (err) {
+    console.error('Erro ao buscar orçamento por ID:', err);
     return null;
   }
-  return data as Quote;
 }
 
 export async function createQuote(payload: {
   customer_id: string;
   address_id?: string | null;
   equipment_id?: string | null;
-  category: 'climatizacao' | 'eletrica';
-  valid_until: string;
+  category: ServiceCategory;
+  valid_days?: number;
+  valid_until?: string;
   subtotal?: number;
   discount?: number;
   total_amount?: number;
@@ -779,727 +1208,685 @@ export async function createQuote(payload: {
   execution_time_estimate?: string;
   warranty_terms?: string;
   notes?: string;
-  items?: Array<{
+  items: Array<{
     item_type: 'service' | 'material';
-    catalog_service_id?: string;
+    catalog_service_id?: string | null;
     name: string;
     quantity: number;
     unit_price: number;
-    total_price: number;
+    total_price?: number;
   }>;
-}): Promise<Quote | null> {
+}): Promise<Quote> {
   const code = await getNextQuoteCode();
-  const { items, ...quoteData } = payload;
+  const validDays = payload.valid_days || 15;
+  const now = new Date();
+  const validUntil =
+    payload.valid_until ||
+    new Date(now.getTime() + validDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const { data: quote, error } = await supabase
-    .from('mg_quotes')
-    .insert([
-      {
-        ...quoteData,
-        code,
-        status: 'draft',
-        total_amount: quoteData.total_amount || 0,
-      },
-    ])
-    .select()
-    .single();
+  let totalServices = 0;
+  let totalMaterials = 0;
 
-  if (error || !quote) {
-    console.error('Erro ao criar orçamento:', error);
-    throw new Error(error?.message || 'Falha ao salvar orçamento');
+  payload.items.forEach((i) => {
+    const sub = i.quantity * i.unit_price;
+    if (i.item_type === 'service') totalServices += sub;
+    else totalMaterials += sub;
+  });
+
+  const discount = payload.discount || 0;
+  const totalAmount =
+    payload.total_amount !== undefined
+      ? payload.total_amount
+      : Math.max(0, totalServices + totalMaterials - discount);
+
+  const quoteData = {
+    code,
+    customer_id: payload.customer_id,
+    address_id: payload.address_id || null,
+    equipment_id: payload.equipment_id || null,
+    category: payload.category || 'climatizacao',
+    status: 'sent' as QuoteStatus,
+    valid_until: validUntil,
+    total_services: totalServices,
+    total_materials: totalMaterials,
+    discount,
+    total_amount: totalAmount,
+    payment_terms: payload.payment_terms || 'À vista via Pix ou até 3x no cartão',
+    execution_time_estimate: payload.execution_time_estimate || null,
+    warranty_terms: payload.warranty_terms || null,
+    notes: payload.notes || null,
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  };
+
+  const docRef = await addDoc(collection(db, 'quotes'), quoteData);
+  const quoteId = docRef.id;
+
+  const savedItems: QuoteItem[] = [];
+  for (const it of payload.items) {
+    const itemRecord = {
+      quote_id: quoteId,
+      item_type: it.item_type,
+      name: it.name,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      total_price: it.quantity * it.unit_price,
+    };
+    const iDoc = await addDoc(collection(db, 'quote_items'), itemRecord);
+    savedItems.push({ id: iDoc.id, ...(itemRecord as any) });
   }
 
-  if (items && items.length > 0) {
-    const itemsToInsert = items.map((i) => ({
-      quote_id: quote.id,
-      ...i,
-    }));
-    await supabase.from('mg_quote_items').insert(itemsToInsert);
-  }
-
-  return quote as Quote;
+  return { id: quoteId, ...(quoteData as any), items: savedItems };
 }
 
 export async function updateQuoteStatus(id: string, status: QuoteStatus): Promise<boolean> {
-  const { error } = await supabase
-    .from('mg_quotes')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  return !error;
+  try {
+    await updateDoc(doc(db, 'quotes', id), { status, updated_at: new Date().toISOString() });
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar status do orçamento:', err);
+    return false;
+  }
 }
 
-/**
- * Conversão segura de Orçamento Aprovado em Ordem de Serviço
- * Copia os dados, itens e vincula a OS gerada de volta ao orçamento
- */
 export async function convertQuoteToServiceOrder(quoteId: string): Promise<ServiceOrder | null> {
   const quote = await getQuoteById(quoteId);
-  if (!quote) throw new Error('Orçamento não encontrado');
+  if (!quote) return null;
 
-  if (quote.service_order_id) {
-    throw new Error('Este orçamento já foi convertido em uma Ordem de Serviço.');
+  const so = await createServiceOrder({
+    customer_id: quote.customer_id,
+    equipment_id: quote.equipment_id || undefined,
+    category: quote.category,
+    problem_description: `Orçamento aprovado (${quote.code}): ${quote.notes || 'Execução de serviços conforme proposta'}`,
+    items: quote.items?.map((it) => ({
+      item_type: it.item_type,
+      name: it.name,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+    })),
+  });
+
+  await updateQuoteStatus(quoteId, 'approved');
+  return so;
+}
+
+export async function deleteQuote(id: string): Promise<boolean> {
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'quotes', id));
+    const itemsSnap = await getDocs(
+      query(collection(db, 'quote_items'), where('quote_id', '==', id))
+    );
+    itemsSnap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir orçamento:', err);
+    return false;
   }
-
-  // 1. Criar a nova O.S. a partir dos dados do orçamento
-  const orderCode = await getNextOrderCode();
-  const isCleaning = quote.category === 'climatizacao';
-
-  const { data: order, error: orderError } = await supabase
-    .from('mg_service_orders')
-    .insert([
-      {
-        code: orderCode,
-        customer_id: quote.customer_id,
-        address_id: quote.address_id,
-        equipment_id: quote.equipment_id,
-        category: quote.category,
-        status: 'open',
-        problem_description: quote.notes || `Serviço aprovado conforme Orçamento ${quote.code}`,
-        is_cleaning: isCleaning,
-        total_services: quote.subtotal,
-        discount: quote.discount,
-        total_amount: quote.total_amount,
-        payment_method: quote.payment_terms,
-        warranty_terms: quote.warranty_terms,
-      },
-    ])
-    .select()
-    .single();
-
-  if (orderError || !order) {
-    console.error('Erro ao converter orçamento em O.S.:', orderError);
-    throw new Error('Falha ao gerar Ordem de Serviço.');
-  }
-
-  // 2. Copiar os itens do orçamento para a O.S.
-  if (quote.items && quote.items.length > 0) {
-    const orderItems = quote.items.map((qi) => ({
-      service_order_id: order.id,
-      item_type: qi.item_type,
-      catalog_service_id: qi.catalog_service_id,
-      name: qi.name,
-      quantity: qi.quantity,
-      unit_price: qi.unit_price,
-      total_price: qi.total_price,
-    }));
-    await supabase.from('mg_service_order_items').insert(orderItems);
-  }
-
-  // 3. Atualizar o orçamento com o ID da O.S. e marcar como 'approved'
-  await supabase
-    .from('mg_quotes')
-    .update({
-      service_order_id: order.id,
-      status: 'approved',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', quoteId);
-
-  return order as ServiceOrder;
 }
 
 // ==========================================
-// FOTOS E ANEXOS
+// ANEXOS & FOTOS (COM FIREBASE STORAGE)
 // ==========================================
 export async function getAttachments(filters: {
   serviceOrderId?: string;
-  quoteId?: string;
 }): Promise<ServiceAttachment[]> {
-  let query = supabase
-    .from('mg_service_attachments')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const colRef = collection(db, 'service_attachments');
+    const snap = filters.serviceOrderId
+      ? await getDocs(query(colRef, where('service_order_id', '==', filters.serviceOrderId)))
+      : await getDocs(colRef);
 
-  if (filters.serviceOrderId) {
-    query = query.eq('service_order_id', filters.serviceOrderId);
-  }
-  if (filters.quoteId) {
-    query = query.eq('quote_id', filters.quoteId);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar anexos:', error);
+    const list: ServiceAttachment[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+    list.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar anexos:', err);
     return [];
   }
-  return data as ServiceAttachment[];
 }
 
 export async function addAttachment(payload: {
-  service_order_id?: string;
-  quote_id?: string;
+  service_order_id: string;
   file_url: string;
-  attachment_type?: 'before' | 'after' | 'document' | 'receipt';
+  attachment_type: 'before' | 'after' | 'document' | 'other';
   caption?: string;
-}): Promise<ServiceAttachment | null> {
-  const { data, error } = await supabase
-    .from('mg_service_attachments')
-    .insert([
-      {
-        ...payload,
-        attachment_type: payload.attachment_type || 'before',
-      },
-    ])
-    .select()
-    .single();
+}): Promise<ServiceAttachment> {
+  const attData = {
+    ...payload,
+    caption: payload.caption || null,
+    created_at: new Date().toISOString(),
+  };
+  const docRef = await addDoc(collection(db, 'service_attachments'), attData);
+  return { id: docRef.id, ...(attData as any) };
+}
 
-  if (error) {
-    console.error('Erro ao salvar anexo:', error);
-    throw new Error(error.message);
+export async function deleteAttachment(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'service_attachments', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir anexo:', err);
+    return false;
   }
-  return data as ServiceAttachment;
+}
+
+export async function uploadServicePhoto(
+  serviceOrderId: string,
+  file: File | Blob,
+  type: 'before' | 'after',
+  caption?: string
+): Promise<ServiceAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64Url = reader.result as string;
+        const attachment = await addAttachment({
+          service_order_id: serviceOrderId,
+          file_url: base64Url,
+          attachment_type: type,
+          caption: caption || (type === 'before' ? 'Foto de Antes' : 'Foto de Depois'),
+        });
+        resolve(attachment);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
 }
 
 // ==========================================
 // FORNECEDORES
 // ==========================================
 export async function getSuppliers(): Promise<Supplier[]> {
-  const { data, error } = await supabase
-    .from('mg_suppliers')
-    .select('*')
-    .order('name', { ascending: true });
-
-  if (error) {
-    console.error('Erro ao buscar fornecedores:', error);
+  try {
+    const snap = await getDocs(collection(db, 'suppliers'));
+    const list: Supplier[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar fornecedores:', err);
     return [];
   }
-  return data as Supplier[];
 }
 
 export async function createSupplier(payload: {
   name: string;
-  contact_name?: string;
+  contact_person?: string;
   phone?: string;
   whatsapp?: string;
   email?: string;
-  city?: string;
+  address?: string;
+  product_types?: string;
   notes?: string;
 }): Promise<Supplier> {
-  const { data, error } = await supabase
-    .from('mg_suppliers')
-    .insert([{ ...payload, status: 'active' }])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Erro ao cadastrar fornecedor:', error);
-    throw new Error(error.message);
-  }
-  return data as Supplier;
+  const supData = {
+    ...payload,
+    created_at: new Date().toISOString(),
+  };
+  const docRef = await addDoc(collection(db, 'suppliers'), supData);
+  return { id: docRef.id, ...(supData as any) };
 }
 
-export async function updateSupplier(
-  id: string,
-  payload: Partial<Supplier>
-): Promise<Supplier> {
-  const { data, error } = await supabase
-    .from('mg_suppliers')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Erro ao atualizar fornecedor:', error);
-    throw new Error(error.message);
+export async function updateSupplier(id: string, updates: Partial<Supplier>): Promise<boolean> {
+  try {
+    await updateDoc(doc(db, 'suppliers', id), updates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar fornecedor:', err);
+    return false;
   }
-  return data as Supplier;
+}
+
+export async function deleteSupplier(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'suppliers', id));
 }
 
 // ==========================================
 // ESTOQUE & PRODUTOS
 // ==========================================
-export async function getProducts(filters?: {
-  category?: string;
-  lowStockOnly?: boolean;
-  search?: string;
-}): Promise<Product[]> {
-  let query = supabase
-    .from('mg_products')
-    .select(`
-      *,
-      supplier:mg_suppliers(*)
-    `)
-    .order('name', { ascending: true });
+export async function getProducts(filters?: { category?: ProductCategory }): Promise<Product[]> {
+  try {
+    const snap = await getDocs(collection(db, 'products'));
+    let list: Product[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
 
-  if (filters?.category && filters.category !== 'all') {
-    query = query.eq('category', filters.category);
-  }
-
-  if (filters?.search && filters.search.trim()) {
-    const term = `%${filters.search.trim()}%`;
-    query = query.or(`name.ilike.${term},sku.ilike.${term}`);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar produtos:', error);
+    if (filters?.category) {
+      list = list.filter((p) => p.category === filters.category);
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar produtos:', err);
     return [];
   }
-
-  let products = (data || []) as Product[];
-  if (filters?.lowStockOnly) {
-    products = products.filter((p) => p.quantity <= p.min_stock);
-  }
-
-  return products;
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
-  const { data, error } = await supabase
-    .from('mg_products')
-    .select(`
-      *,
-      supplier:mg_suppliers(*)
-    `)
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Erro ao buscar produto por ID:', error);
+  try {
+    const docSnap = await getDoc(doc(db, 'products', id));
+    if (!docSnap.exists()) return null;
+    return { id: docSnap.id, ...(docSnap.data() as any) } as Product;
+  } catch (err) {
+    console.error('Erro ao buscar produto por ID:', err);
     return null;
   }
-  return data as Product;
 }
 
 export async function createProduct(payload: Partial<Product>): Promise<Product> {
-  const { data, error } = await supabase
-    .from('mg_products')
-    .insert([
-      {
-        name: payload.name,
-        category: payload.category || 'outros',
-        sku: payload.sku || null,
-        unit: payload.unit || 'un',
-        quantity: payload.quantity ?? 0,
-        min_stock: payload.min_stock ?? 2,
-        cost_price: payload.cost_price ?? 0,
-        sale_price: payload.sale_price ?? 0,
-        supplier_id: payload.supplier_id || null,
-        notes: payload.notes || null,
-        status: 'active',
-      },
-    ])
-    .select(`
-      *,
-      supplier:mg_suppliers(*)
-    `)
-    .single();
+  const now = new Date().toISOString();
+  const prodData = {
+    name: payload.name || 'Novo Produto',
+    category: payload.category || 'outros',
+    unit: payload.unit || 'un',
+    quantity: payload.quantity || 0,
+    min_stock: payload.min_stock || 1,
+    cost_price: payload.cost_price || 0,
+    sale_price: payload.sale_price ?? payload.selling_price ?? 0,
+    supplier_id: payload.supplier_id || null,
+    location: payload.location || null,
+    notes: payload.notes || null,
+    status: 'active',
+    created_at: now,
+    updated_at: now,
+  };
 
-  if (error) {
-    console.error('Erro ao criar produto:', error);
-    throw new Error(error.message);
+  const docRef = await addDoc(collection(db, 'products'), prodData);
+  const prodId = docRef.id;
+
+  if (prodData.quantity > 0) {
+    try {
+      await addDoc(collection(db, 'stock_movements'), {
+        product_id: prodId,
+        movement_type: 'initial',
+        quantity: prodData.quantity,
+        previous_quantity: 0,
+        new_quantity: prodData.quantity,
+        unit_cost: prodData.cost_price,
+        notes: 'Saldo inicial cadastrado',
+        created_at: now,
+      });
+    } catch (e) {
+      console.warn('Falha ao registrar saldo inicial:', e);
+    }
   }
 
-  // Se começou com estoque > 0, cria movimentação de saldo inicial
-  if (payload.quantity && payload.quantity > 0) {
-    await supabase.from('mg_stock_movements').insert([
-      {
-        product_id: data.id,
-        movement_type: 'entry',
-        quantity: payload.quantity,
-        unit_cost: payload.cost_price ?? 0,
-        notes: 'Cadastro inicial de produto / saldo inicial',
-      },
-    ]);
-  }
-
-  return data as Product;
+  return { id: prodId, ...(prodData as any) };
 }
 
-export async function updateProduct(
-  id: string,
-  payload: Partial<Product>
-): Promise<Product> {
-  const { data, error } = await supabase
-    .from('mg_products')
-    .update({
-      ...payload,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select(`
-      *,
-      supplier:mg_suppliers(*)
-    `)
-    .single();
-
-  if (error) {
-    console.error('Erro ao atualizar produto:', error);
-    throw new Error(error.message);
+export async function updateProduct(id: string, updates: Partial<Product>): Promise<boolean> {
+  try {
+    const cleanUpdates: any = { ...updates, updated_at: new Date().toISOString() };
+    if (cleanUpdates.selling_price !== undefined && cleanUpdates.sale_price === undefined) {
+      cleanUpdates.sale_price = cleanUpdates.selling_price;
+    }
+    await updateDoc(doc(db, 'products', id), cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar produto:', err);
+    return false;
   }
-  return data as Product;
 }
 
 export async function recordStockMovement(params: {
-  productId: string;
-  movementType: StockMovementType;
+  productId?: string;
+  product_id?: string;
+  movement_type?: StockMovementType;
+  movementType?: StockMovementType;
   quantity: number;
+  unit_cost?: number;
   unitCost?: number;
-  serviceOrderId?: string;
+  service_order_id?: string;
   notes?: string;
-}): Promise<StockMovement> {
-  const product = await getProductById(params.productId);
-  if (!product) {
-    throw new Error('Produto não encontrado');
+}): Promise<boolean> {
+  try {
+    const targetId = params.product_id || params.productId;
+    if (!targetId) return false;
+
+    const moveType = params.movement_type || params.movementType || 'adjustment';
+    const product = await getProductById(targetId);
+    if (!product) return false;
+
+    const currentQty = product.quantity || 0;
+    let newQty = currentQty;
+
+    if (moveType === 'in' || moveType === 'entry' || moveType === 'in_purchase' || moveType === 'initial') {
+      newQty = currentQty + params.quantity;
+    } else if (moveType === 'out' || moveType === 'exit' || moveType === 'out_service_order' || moveType === 'loss') {
+      newQty = Math.max(0, currentQty - params.quantity);
+    } else if (moveType === 'adjustment') {
+      newQty = params.quantity;
+    }
+
+    const now = new Date().toISOString();
+    const effectiveCost = params.unit_cost ?? params.unitCost ?? product.cost_price;
+
+    await addDoc(collection(db, 'stock_movements'), {
+      product_id: targetId,
+      movement_type: moveType,
+      quantity: params.quantity,
+      previous_quantity: currentQty,
+      new_quantity: newQty,
+      unit_cost: effectiveCost,
+      service_order_id: params.service_order_id || null,
+      notes: params.notes || null,
+      created_at: now,
+    });
+
+    await updateProduct(targetId, { quantity: newQty });
+    return true;
+  } catch (err) {
+    console.error('Erro ao registrar movimentação de estoque:', err);
+    return false;
   }
-
-  let newQuantity = product.quantity;
-  if (params.movementType === 'entry') {
-    newQuantity += Math.abs(params.quantity);
-  } else if (params.movementType === 'exit' || params.movementType === 'service_order') {
-    newQuantity -= Math.abs(params.quantity);
-    if (newQuantity < 0) newQuantity = 0;
-  } else if (params.movementType === 'adjustment') {
-    // Para ajuste, a quantidade informada pode ser o novo saldo ou a variação
-    newQuantity = params.quantity;
-  }
-
-  // 1. Inserir movimento
-  const { data: movement, error: movError } = await supabase
-    .from('mg_stock_movements')
-    .insert([
-      {
-        product_id: params.productId,
-        movement_type: params.movementType,
-        quantity: params.quantity,
-        unit_cost: params.unitCost ?? product.cost_price,
-        service_order_id: params.serviceOrderId || null,
-        notes: params.notes || null,
-      },
-    ])
-    .select()
-    .single();
-
-  if (movError) {
-    console.error('Erro ao registrar movimentação de estoque:', movError);
-    throw new Error(movError.message);
-  }
-
-  // 2. Atualizar saldo do produto
-  await supabase
-    .from('mg_products')
-    .update({
-      quantity: newQuantity,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', params.productId);
-
-  return movement as StockMovement;
 }
 
 export async function getStockMovements(filters?: {
   productId?: string;
   limit?: number;
 }): Promise<StockMovement[]> {
-  let query = supabase
-    .from('mg_stock_movements')
-    .select(`
-      *,
-      product:mg_products(*)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'stock_movements'));
+    const prodSnap = await getDocs(collection(db, 'products'));
 
-  if (filters?.productId) {
-    query = query.eq('product_id', filters.productId);
-  }
+    const prodMap: Record<string, Product> = {};
+    prodSnap.forEach((d) => (prodMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  if (filters?.limit) {
-    query = query.limit(filters.limit);
-  } else {
-    query = query.limit(50);
-  }
+    let list: StockMovement[] = [];
+    snap.forEach((d) => {
+      const m = { id: d.id, ...(d.data() as any) } as StockMovement;
+      m.product = prodMap[m.product_id];
+      list.push(m);
+    });
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar movimentações de estoque:', error);
+    if (filters?.productId) {
+      list = list.filter((m) => m.product_id === filters.productId);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    if (filters?.limit) {
+      list = list.slice(0, filters.limit);
+    }
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar histórico de estoque:', err);
     return [];
   }
-  return data as StockMovement[];
+}
+
+export async function updateStockMovement(
+  movementId: string,
+  params: {
+    movementType?: any;
+    movement_type?: any;
+    quantity?: number;
+    unit_cost?: number;
+    unitCost?: number;
+    notes?: string;
+  }
+): Promise<boolean> {
+  try {
+    const cleanParams: any = { ...params };
+    if (cleanParams.movementType) {
+      cleanParams.movement_type = cleanParams.movementType;
+      delete cleanParams.movementType;
+    }
+    if (cleanParams.unitCost !== undefined && cleanParams.unit_cost === undefined) {
+      cleanParams.unit_cost = cleanParams.unitCost;
+      delete cleanParams.unitCost;
+    }
+    await updateDoc(doc(db, 'stock_movements', movementId), cleanParams);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar movimentação de estoque:', err);
+    return false;
+  }
+}
+
+export async function deleteStockMovement(movementId: string): Promise<void> {
+  await deleteDoc(doc(db, 'stock_movements', movementId));
+}
+
+export async function deleteProduct(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'products', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir produto:', err);
+    return false;
+  }
 }
 
 // ==========================================
-// LEMBRETES DE MANUTENÇÃO PREVENTIVA
+// LEMBRETES PREVENTIVOS DE HIGIENIZAÇÃO
 // ==========================================
 export async function getMaintenanceReminders(filters?: {
-  status?: ReminderStatus | 'all';
+  status?: ReminderStatus;
+  customerId?: string;
 }): Promise<MaintenanceReminder[]> {
-  let query = supabase
-    .from('mg_maintenance_reminders')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      equipment:mg_equipment(
-        *,
-        address:mg_customer_addresses(*)
-      )
-    `)
-    .order('scheduled_for_date', { ascending: true });
+  try {
+    const snap = await getDocs(collection(db, 'maintenance_reminders'));
+    const [custSnap, eqSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'equipment')),
+    ]);
 
-  if (filters?.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar lembretes de manutenção:', error);
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    let list: MaintenanceReminder[] = [];
+    snap.forEach((d) => {
+      const r = { id: d.id, ...(d.data() as any) } as MaintenanceReminder;
+      r.customer = custMap[r.customer_id];
+      r.equipment = eqMap[r.equipment_id];
+      list.push(r);
+    });
+
+    if (filters?.status && filters.status !== ('all' as any)) {
+      list = list.filter((r) => r.status === filters.status);
+    }
+    if (filters?.customerId) {
+      list = list.filter((r) => r.customer_id === filters.customerId);
+    }
+
+    list.sort((a, b) => (a.scheduled_for_date || '').localeCompare(b.scheduled_for_date || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar lembretes:', err);
     return [];
   }
-  return data as MaintenanceReminder[];
 }
 
 export async function syncMaintenanceRemindersFromEquipment(): Promise<number> {
-  // Busca todos os aparelhos ativos com next_cleaning_date preenchida
-  const { data: equipmentList, error } = await supabase
-    .from('mg_equipment')
-    .select('id, customer_id, next_cleaning_date')
-    .eq('status', 'active')
-    .not('next_cleaning_date', 'is', null);
+  try {
+    const eqSnap = await getDocs(collection(db, 'equipment'));
+    const remSnap = await getDocs(collection(db, 'maintenance_reminders'));
 
-  if (error || !equipmentList) {
-    return 0;
-  }
+    const existingRemMap: Record<string, any> = {};
+    remSnap.forEach((d) => {
+      existingRemMap[(d.data() as any).equipment_id] = d;
+    });
 
-  let createdCount = 0;
+    let syncCount = 0;
+    const now = new Date().toISOString();
 
-  for (const eq of equipmentList) {
-    if (!eq.next_cleaning_date) continue;
+    for (const d of eqSnap.docs) {
+      const eq = d.data() as any;
+      if (!eq.next_cleaning_date) continue;
 
-    // Verifica se já existe um lembrete pendente ou agendado para este equipamento na mesma data
-    const { data: existing } = await supabase
-      .from('mg_maintenance_reminders')
-      .select('id, scheduled_for_date, status')
-      .eq('equipment_id', eq.id)
-      .limit(1);
-
-    if (!existing || existing.length === 0) {
-      // Cria novo lembrete
-      await supabase.from('mg_maintenance_reminders').insert([
-        {
-          equipment_id: eq.id,
+      const existingRemDoc = existingRemMap[d.id];
+      if (existingRemDoc) {
+        await updateDoc(existingRemDoc.ref, {
+          scheduled_for_date: eq.next_cleaning_date,
+          updated_at: now,
+        });
+      } else {
+        await addDoc(collection(db, 'maintenance_reminders'), {
+          equipment_id: d.id,
           customer_id: eq.customer_id,
           scheduled_for_date: eq.next_cleaning_date,
           status: 'pending',
-          notes: 'Gerado automaticamente pelo ciclo de limpeza do aparelho',
-        },
-      ]);
-      createdCount++;
-    } else {
-      // Se já existe e a data do aparelho mudou (ex: após nova limpeza realizada), atualiza o lembrete pendente
-      const currentReminder = existing[0];
-      if (
-        currentReminder.scheduled_for_date !== eq.next_cleaning_date &&
-        currentReminder.status !== 'dismissed'
-      ) {
-        await supabase
-          .from('mg_maintenance_reminders')
-          .update({
-            scheduled_for_date: eq.next_cleaning_date,
-            status: 'pending',
-            contacted_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', currentReminder.id);
+          created_at: now,
+          updated_at: now,
+        });
       }
+      syncCount++;
     }
-  }
 
-  return createdCount;
+    return syncCount;
+  } catch (err) {
+    console.error('Erro ao sincronizar lembretes:', err);
+    return 0;
+  }
 }
 
 export async function logReminderContact(
-  id: string,
-  notes?: string
+  reminderId: string,
+  paramsOrNotes?: string | { notes?: string; newStatus?: ReminderStatus }
 ): Promise<MaintenanceReminder> {
-  const updatePayload: Partial<MaintenanceReminder> = {
-    status: 'contacted',
-    contacted_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  const notes =
+    typeof paramsOrNotes === 'string'
+      ? paramsOrNotes
+      : paramsOrNotes?.notes || 'Contato registrado';
+  const newStatus =
+    typeof paramsOrNotes === 'object' && paramsOrNotes.newStatus
+      ? paramsOrNotes.newStatus
+      : 'contacted';
 
-  if (notes) {
-    updatePayload.notes = notes;
-  }
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, 'maintenance_reminders', reminderId), {
+    status: newStatus,
+    contacted_at: now,
+    notes,
+    updated_at: now,
+  });
 
-  const { data, error } = await supabase
-    .from('mg_maintenance_reminders')
-    .update(updatePayload)
-    .eq('id', id)
-    .select(`
-      *,
-      customer:mg_customers(*),
-      equipment:mg_equipment(*)
-    `)
-    .single();
-
-  if (error) {
-    console.error('Erro ao registrar contato de lembrete:', error);
-    throw new Error(error.message);
-  }
-  return data as MaintenanceReminder;
+  const snap = await getDoc(doc(db, 'maintenance_reminders', reminderId));
+  return { id: snap.id, ...(snap.data() as any) } as MaintenanceReminder;
 }
 
 export async function updateReminderStatus(
   id: string,
-  status: ReminderStatus,
-  notes?: string
+  status: ReminderStatus
 ): Promise<MaintenanceReminder> {
-  const payload: Record<string, unknown> = {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, 'maintenance_reminders', id), {
     status,
-    updated_at: new Date().toISOString(),
-  };
-  if (notes !== undefined) {
-    payload.notes = notes;
-  }
+    updated_at: now,
+  });
 
-  const { data, error } = await supabase
-    .from('mg_maintenance_reminders')
-    .update(payload)
-    .eq('id', id)
-    .select(`
-      *,
-      customer:mg_customers(*),
-      equipment:mg_equipment(*)
-    `)
-    .single();
-
-  if (error) {
-    console.error('Erro ao atualizar status do lembrete:', error);
-    throw new Error(error.message);
-  }
-  return data as MaintenanceReminder;
+  const snap = await getDoc(doc(db, 'maintenance_reminders', id));
+  return { id: snap.id, ...(snap.data() as any) } as MaintenanceReminder;
 }
 
 // ==========================================
-// FINANCEIRO & FLUXO DE CAIXA
+// FLUXO DE CAIXA & TRANSAÇÕES FINANCEIRAS
 // ==========================================
 export async function getFinancialTransactions(filters?: {
   type?: FinancialTransactionType;
-  category?: string;
   startDate?: string;
   endDate?: string;
-  status?: string;
 }): Promise<FinancialTransaction[]> {
-  let query = supabase
-    .from('mg_financial_transactions')
-    .select(`
-      *,
-      customer:mg_customers(id, name),
-      supplier:mg_suppliers(id, name),
-      service_order:mg_service_orders(id, code)
-    `)
-    .order('transaction_date', { ascending: false })
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'financial_transactions'));
+    const [custSnap, orderSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'service_orders')),
+    ]);
 
-  if (filters?.type) {
-    query = query.eq('type', filters.type);
-  }
-  if (filters?.category && filters.category !== 'all') {
-    query = query.eq('category', filters.category);
-  }
-  if (filters?.startDate) {
-    query = query.gte('transaction_date', filters.startDate);
-  }
-  if (filters?.endDate) {
-    query = query.lte('transaction_date', filters.endDate);
-  }
-  if (filters?.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar transações financeiras:', error);
+    const orderMap: Record<string, ServiceOrder> = {};
+    orderSnap.forEach((d) => (orderMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    let list: FinancialTransaction[] = [];
+    snap.forEach((d) => {
+      const tx = { id: d.id, ...(d.data() as any) } as FinancialTransaction;
+      if (tx.customer_id) tx.customer = custMap[tx.customer_id];
+      if (tx.service_order_id) tx.service_order = orderMap[tx.service_order_id];
+      list.push(tx);
+    });
+
+    if (filters?.type && filters.type !== ('all' as any)) {
+      list = list.filter((t) => t.type === filters.type);
+    }
+    if (filters?.startDate) {
+      list = list.filter((t) => (t.transaction_date || '') >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      list = list.filter((t) => (t.transaction_date || '') <= filters.endDate!);
+    }
+
+    list.sort((a, b) => (b.transaction_date || '').localeCompare(a.transaction_date || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar transações financeiras:', err);
     return [];
   }
-  return data as FinancialTransaction[];
 }
 
-export async function createFinancialTransaction(
-  payload: Partial<FinancialTransaction>
-): Promise<FinancialTransaction> {
-  const { data, error } = await supabase
-    .from('mg_financial_transactions')
-    .insert([
-      {
-        type: payload.type || 'expense',
-        category: payload.category || 'outros',
-        description: payload.description,
-        amount: payload.amount ?? 0,
-        payment_method: payload.payment_method || 'pix',
-        status: payload.status || 'paid',
-        transaction_date: payload.transaction_date || new Date().toISOString().split('T')[0],
-        due_date: payload.due_date || null,
-        service_order_id: payload.service_order_id || null,
-        customer_id: payload.customer_id || null,
-        supplier_id: payload.supplier_id || null,
-        notes: payload.notes || null,
-      },
-    ])
-    .select(`
-      *,
-      customer:mg_customers(id, name),
-      supplier:mg_suppliers(id, name)
-    `)
-    .single();
+export async function createFinancialTransaction(payload: {
+  type: FinancialTransactionType;
+  category: FinancialCategory;
+  description: string;
+  amount: number;
+  payment_method: FinancialPaymentMethod;
+  transaction_date?: string;
+  service_order_id?: string;
+  customer_id?: string;
+  notes?: string;
+}): Promise<FinancialTransaction> {
+  const txData = {
+    ...payload,
+    transaction_date: payload.transaction_date || new Date().toISOString().split('T')[0],
+    service_order_id: payload.service_order_id || null,
+    customer_id: payload.customer_id || null,
+    notes: payload.notes || null,
+    created_at: new Date().toISOString(),
+  };
 
-  if (error) {
-    console.error('Erro ao registrar transação financeira:', error);
-    throw new Error(error.message);
-  }
-  return data as FinancialTransaction;
+  const docRef = await addDoc(collection(db, 'financial_transactions'), txData);
+  return { id: docRef.id, ...(txData as any) };
 }
 
 export async function deleteFinancialTransaction(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('mg_financial_transactions')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Erro ao excluir transação financeira:', error);
-    throw new Error(error.message);
+  try {
+    await deleteDoc(doc(db, 'financial_transactions', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir transação financeira:', err);
+    return false;
   }
-  return true;
 }
 
 export async function getFinancialSummary(filters?: {
   startDate?: string;
   endDate?: string;
 }) {
-  const transactions = await getFinancialTransactions(filters);
-
+  const txs = await getFinancialTransactions(filters);
   let totalIncome = 0;
   let totalExpense = 0;
-  let pendingReceivables = 0;
-  const categoryExpenses: Record<string, number> = {};
 
-  for (const t of transactions) {
-    const val = Number(t.amount || 0);
-    if (t.type === 'income') {
-      if (t.status === 'paid') {
-        totalIncome += val;
-      } else if (t.status === 'pending') {
-        pendingReceivables += val;
-      }
-    } else if (t.type === 'expense') {
-      if (t.status === 'paid') {
-        totalExpense += val;
-        categoryExpenses[t.category] = (categoryExpenses[t.category] || 0) + val;
-      }
-    }
-  }
-
-  const netBalance = totalIncome - totalExpense;
+  txs.forEach((t) => {
+    if (t.type === 'income') totalIncome += t.amount;
+    else if (t.type === 'expense') totalExpense += t.amount;
+  });
 
   return {
     totalIncome,
     totalExpense,
-    netBalance,
-    pendingReceivables,
-    categoryExpenses,
-    transactionCount: transactions.length,
+    balance: totalIncome - totalExpense,
+    transactionsCount: txs.length,
   };
 }
 
@@ -1507,64 +1894,75 @@ export async function getFinancialSummary(filters?: {
 // TERMOS DE GARANTIA
 // ==========================================
 export async function getNextWarrantyCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const { count } = await supabase
-    .from('mg_warranty_terms')
-    .select('*', { count: 'exact', head: true });
-
-  const nextSeq = (count || 0) + 1;
-  return `GAR-${year}-${String(nextSeq).padStart(4, '0')}`;
+  return getNextSequentialCode('warranty_terms', 'GAR');
 }
 
 export async function getWarrantyTerms(filters?: {
   customerId?: string;
   serviceOrderId?: string;
 }): Promise<WarrantyTerm[]> {
-  let query = supabase
-    .from('mg_warranty_terms')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      service_order:mg_service_orders(*),
-      equipment:mg_equipment(*)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'warranty_terms'));
+    const [custSnap, orderSnap, eqSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'service_orders')),
+      getDocs(collection(db, 'equipment')),
+    ]);
 
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId);
-  }
-  if (filters?.serviceOrderId) {
-    query = query.eq('service_order_id', filters.serviceOrderId);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar termos de garantia:', error);
+    const orderMap: Record<string, ServiceOrder> = {};
+    orderSnap.forEach((d) => (orderMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    let list: WarrantyTerm[] = [];
+    snap.forEach((d) => {
+      const w = { id: d.id, ...(d.data() as any) } as WarrantyTerm;
+      w.customer = custMap[w.customer_id];
+      w.service_order = orderMap[w.service_order_id];
+      if (w.equipment_id) w.equipment = eqMap[w.equipment_id];
+      list.push(w);
+    });
+
+    if (filters?.customerId) {
+      list = list.filter((w) => w.customer_id === filters.customerId);
+    }
+    if (filters?.serviceOrderId) {
+      list = list.filter((w) => w.service_order_id === filters.serviceOrderId);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar termos de garantia:', err);
     return [];
   }
-  return data as WarrantyTerm[];
 }
 
 export async function getWarrantyTermById(id: string): Promise<WarrantyTerm | null> {
-  const { data, error } = await supabase
-    .from('mg_warranty_terms')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      service_order:mg_service_orders(
-        *,
-        items:mg_service_order_items(*)
-      ),
-      equipment:mg_equipment(*)
-    `)
-    .eq('id', id)
-    .single();
+  try {
+    const docSnap = await getDoc(doc(db, 'warranty_terms', id));
+    if (!docSnap.exists()) return null;
 
-  if (error) {
-    console.error('Erro ao buscar termo de garantia por ID:', error);
+    const term = { id: docSnap.id, ...(docSnap.data() as any) } as WarrantyTerm;
+    const [cust, order, eq] = await Promise.all([
+      getCustomerById(term.customer_id),
+      getServiceOrderById(term.service_order_id),
+      term.equipment_id ? getDoc(doc(db, 'equipment', term.equipment_id)) : Promise.resolve(null),
+    ]);
+
+    term.customer = cust || undefined;
+    term.service_order = order || undefined;
+    if (eq && eq.exists()) term.equipment = { id: eq.id, ...(eq.data() as any) };
+
+    return term;
+  } catch (err) {
+    console.error('Erro ao buscar termo de garantia por ID:', err);
     return null;
   }
-  return data as WarrantyTerm;
 }
 
 export async function createWarrantyTerm(payload: {
@@ -1582,106 +1980,118 @@ export async function createWarrantyTerm(payload: {
   const start = new Date();
   const end = new Date(start.getTime() + duration * 24 * 60 * 60 * 1000);
 
-  const startDateStr = start.toISOString().split('T')[0];
-  const endDateStr = end.toISOString().split('T')[0];
+  const termData = {
+    code,
+    service_order_id: payload.service_order_id,
+    customer_id: payload.customer_id,
+    equipment_id: payload.equipment_id || null,
+    warranty_type: payload.warranty_type || 'servico',
+    duration_days: duration,
+    start_date: start.toISOString().split('T')[0],
+    end_date: end.toISOString().split('T')[0],
+    coverage_details: payload.coverage_details,
+    exclusions: payload.exclusions || null,
+    notes: payload.notes || null,
+    created_at: start.toISOString(),
+  };
 
-  const { data, error } = await supabase
-    .from('mg_warranty_terms')
-    .insert([
-      {
-        code,
-        service_order_id: payload.service_order_id,
-        customer_id: payload.customer_id,
-        equipment_id: payload.equipment_id || null,
-        warranty_type: payload.warranty_type || 'servico',
-        duration_days: duration,
-        start_date: startDateStr,
-        end_date: endDateStr,
-        coverage_details: payload.coverage_details,
-        exclusions: payload.exclusions || null,
-        notes: payload.notes || null,
-      },
-    ])
-    .select(`
-      *,
-      customer:mg_customers(*),
-      service_order:mg_service_orders(*)
-    `)
-    .single();
+  const docRef = await addDoc(collection(db, 'warranty_terms'), termData);
+  return { id: docRef.id, ...(termData as any) };
+}
 
-  if (error) {
-    console.error('Erro ao emitir termo de garantia:', error);
-    throw new Error(error.message);
+export async function deleteWarrantyTerm(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'warranty_terms', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir termo de garantia:', err);
+    return false;
   }
-  return data as WarrantyTerm;
 }
 
 // ==========================================
-// PMOC (PLANO DE MANUTENÇÃO, OPERAÇÃO E CONTROLE - LEI 13.589/2018)
+// PMOC (LEI FEDERAL 13.589/2018)
 // ==========================================
 export async function getNextPMOCCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const { count } = await supabase
-    .from('mg_pmoc_plans')
-    .select('*', { count: 'exact', head: true });
-
-  const nextSeq = (count || 0) + 1;
-  return `PMOC-${year}-${String(nextSeq).padStart(4, '0')}`;
+  return getNextSequentialCode('pmoc_plans', 'PMOC');
 }
 
 export async function getPMOCPlans(filters?: {
   customerId?: string;
   status?: string;
 }): Promise<PMOCPlan[]> {
-  let query = supabase
-    .from('mg_pmoc_plans')
-    .select(`
-      *,
-      customer:mg_customers(*),
-      equipment_links:mg_pmoc_equipment(
-        *,
-        equipment:mg_equipment(*)
-      )
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    const snap = await getDocs(collection(db, 'pmoc_plans'));
+    const [custSnap, linksSnap, eqSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
+      getDocs(collection(db, 'pmoc_equipment')),
+      getDocs(collection(db, 'equipment')),
+    ]);
 
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId);
-  }
-  if (filters?.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status);
-  }
+    const custMap: Record<string, Customer> = {};
+    custSnap.forEach((d) => (custMap[d.id] = { id: d.id, ...(d.data() as any) }));
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao buscar planos PMOC:', error);
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    const linksByPlan: Record<string, PMOCEquipment[]> = {};
+    linksSnap.forEach((d) => {
+      const link = { id: d.id, ...(d.data() as any) } as PMOCEquipment;
+      link.equipment = eqMap[link.equipment_id];
+      if (!linksByPlan[link.pmoc_id]) linksByPlan[link.pmoc_id] = [];
+      linksByPlan[link.pmoc_id].push(link);
+    });
+
+    let list: PMOCPlan[] = [];
+    snap.forEach((d) => {
+      const plan = { id: d.id, ...(d.data() as any) } as PMOCPlan;
+      plan.customer = custMap[plan.customer_id];
+      plan.equipment_links = linksByPlan[plan.id] || [];
+      list.push(plan);
+    });
+
+    if (filters?.customerId) {
+      list = list.filter((p) => p.customer_id === filters.customerId);
+    }
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((p) => p.status === filters.status);
+    }
+
+    list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  } catch (err) {
+    console.error('Erro ao buscar planos PMOC:', err);
     return [];
   }
-  return data as PMOCPlan[];
 }
 
 export async function getPMOCPlanById(id: string): Promise<PMOCPlan | null> {
-  const { data, error } = await supabase
-    .from('mg_pmoc_plans')
-    .select(`
-      *,
-      customer:mg_customers(
-        *,
-        addresses:mg_customer_addresses(*)
-      ),
-      equipment_links:mg_pmoc_equipment(
-        *,
-        equipment:mg_equipment(*)
-      )
-    `)
-    .eq('id', id)
-    .single();
+  try {
+    const docSnap = await getDoc(doc(db, 'pmoc_plans', id));
+    if (!docSnap.exists()) return null;
 
-  if (error) {
-    console.error('Erro ao buscar plano PMOC por ID:', error);
+    const plan = { id: docSnap.id, ...(docSnap.data() as any) } as PMOCPlan;
+    const [cust, linksSnap, eqSnap] = await Promise.all([
+      getCustomerById(plan.customer_id),
+      getDocs(query(collection(db, 'pmoc_equipment'), where('pmoc_id', '==', id))),
+      getDocs(collection(db, 'equipment')),
+    ]);
+
+    const eqMap: Record<string, Equipment> = {};
+    eqSnap.forEach((d) => (eqMap[d.id] = { id: d.id, ...(d.data() as any) }));
+
+    plan.customer = cust || undefined;
+    plan.equipment_links = linksSnap.docs.map((d) => {
+      const link = { id: d.id, ...(d.data() as any) } as PMOCEquipment;
+      link.equipment = eqMap[link.equipment_id];
+      return link;
+    });
+
+    return plan;
+  } catch (err) {
+    console.error('Erro ao buscar plano PMOC por ID:', err);
     return null;
   }
-  return data as PMOCPlan;
 }
 
 export async function createPMOCPlan(
@@ -1700,145 +2110,66 @@ export async function createPMOCPlan(
   equipmentIds: string[]
 ): Promise<PMOCPlan> {
   const code = await getNextPMOCCode();
-
-  // 1. Calcular capacidade total em BTUs a partir dos equipamentos selecionados
   let totalBtu = 0;
-  if (equipmentIds.length > 0) {
-    const { data: eqs } = await supabase
-      .from('mg_equipment')
-      .select('btu_capacity')
-      .in('id', equipmentIds);
 
-    if (eqs) {
-      totalBtu = eqs.reduce((acc, curr) => acc + (curr.btu_capacity || 0), 0);
+  if (equipmentIds.length > 0) {
+    const eqDocs = await Promise.all(
+      equipmentIds.map((eid) => getDoc(doc(db, 'equipment', eid)))
+    );
+    eqDocs.forEach((d) => {
+      if (d.exists()) {
+        totalBtu += (d.data() as any).btu_capacity || 0;
+      }
+    });
+  }
+
+  const planData = {
+    code,
+    customer_id: payload.customer_id,
+    responsible_technician:
+      payload.responsible_technician || 'Responsável Técnico MG Climatização',
+    technician_crea_cft:
+      payload.technician_crea_cft || 'CFT/CRT Especialista em Refrigeração',
+    establishment_name: payload.establishment_name,
+    activity_type: payload.activity_type || 'Comercial',
+    total_refrigeration_capacity_btu: totalBtu,
+    periodicity: payload.periodicity || 'mensal',
+    status: 'active',
+    start_date: payload.start_date || new Date().toISOString().split('T')[0],
+    valid_until: payload.valid_until,
+    emergency_contact: payload.emergency_contact || null,
+    notes: payload.notes || null,
+    created_at: new Date().toISOString(),
+  };
+
+  const docRef = await addDoc(collection(db, 'pmoc_plans'), planData);
+  const planId = docRef.id;
+
+  if (equipmentIds.length > 0) {
+    for (let i = 0; i < equipmentIds.length; i++) {
+      await addDoc(collection(db, 'pmoc_equipment'), {
+        pmoc_id: planId,
+        equipment_id: equipmentIds[i],
+        tag_code: `TAG-AC-${String(i + 1).padStart(2, '0')}`,
+      });
     }
   }
 
-  // 2. Criar plano PMOC
-  const { data: plan, error: planError } = await supabase
-    .from('mg_pmoc_plans')
-    .insert([
-      {
-        code,
-        customer_id: payload.customer_id,
-        responsible_technician:
-          payload.responsible_technician || 'Responsável Técnico MG Climatização',
-        technician_crea_cft:
-          payload.technician_crea_cft || 'CFT/CRT Especialista em Refrigeração',
-        establishment_name: payload.establishment_name,
-        activity_type: payload.activity_type || 'Comercial',
-        total_refrigeration_capacity_btu: totalBtu,
-        periodicity: payload.periodicity || 'mensal',
-        status: 'active',
-        start_date: payload.start_date || new Date().toISOString().split('T')[0],
-        valid_until: payload.valid_until,
-        emergency_contact: payload.emergency_contact || null,
-        notes: payload.notes || null,
-      },
-    ])
-    .select()
-    .single();
-
-  if (planError) {
-    console.error('Erro ao criar plano PMOC:', planError);
-    throw new Error(planError.message);
-  }
-
-  // 3. Vincular equipamentos
-  if (equipmentIds.length > 0) {
-    const links = equipmentIds.map((eqId, idx) => ({
-      pmoc_id: plan.id,
-      equipment_id: eqId,
-      tag_code: `TAG-AC-${String(idx + 1).padStart(2, '0')}`,
-    }));
-
-    await supabase.from('mg_pmoc_equipment').insert(links);
-  }
-
-  return getPMOCPlanById(plan.id) as Promise<PMOCPlan>;
-}
-
-// ==========================================
-// EXCLUSÃO DE REGISTROS (MÓDULOS DO SISTEMA)
-// ==========================================
-export async function deleteCustomer(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_customers').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir cliente:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-export async function deleteEquipment(id: string): Promise<boolean> {
-  // Limpar lembretes de higienização vinculados ao equipamento
-  await supabase.from('mg_maintenance_reminders').delete().eq('equipment_id', id);
-  // Limpar vínculos de planos PMOC vinculados a este equipamento
-  await supabase.from('mg_pmoc_equipment').delete().eq('equipment_id', id);
-
-  const { error } = await supabase.from('mg_equipment').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir equipamento:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-export async function deleteServiceCatalogItem(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_service_catalog').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir serviço do catálogo:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-export async function deleteProduct(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_products').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir produto do estoque:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-export async function deleteQuote(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_quotes').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir orçamento:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-export async function deleteWarrantyTerm(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_warranty_terms').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir termo de garantia:', error);
-    throw new Error(error.message);
-  }
-  return true;
+  return (await getPMOCPlanById(planId)) as PMOCPlan;
 }
 
 export async function deletePMOCPlan(id: string): Promise<boolean> {
-  const { error } = await supabase.from('mg_pmoc_plans').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir plano PMOC:', error);
-    throw new Error(error.message);
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'pmoc_plans', id));
+    const linksSnap = await getDocs(
+      query(collection(db, 'pmoc_equipment'), where('pmoc_id', '==', id))
+    );
+    linksSnap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir plano PMOC:', err);
+    return false;
   }
-  return true;
 }
-
-export async function deleteServiceOrder(id: string): Promise<boolean> {
-  // Desvincula/remove transações financeiras vinculadas à O.S. para manter integridade
-  await supabase.from('mg_financial_transactions').delete().eq('service_order_id', id);
-
-  const { error } = await supabase.from('mg_service_orders').delete().eq('id', id);
-  if (error) {
-    console.error('Erro ao excluir ordem de serviço:', error);
-    throw new Error(error.message);
-  }
-  return true;
-}
-
-
