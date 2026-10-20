@@ -169,6 +169,11 @@ export interface CompanySettings {
   whatsapp?: string | null;
   email?: string | null;
   address?: string | null;
+  city_state?: string | null;
+  owner_name?: string | null;
+  technical_registry?: string | null;
+  default_technician?: string | null;
+  technicians?: string[];
   default_maintenance_interval_months: number;
 }
 

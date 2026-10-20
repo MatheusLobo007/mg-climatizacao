@@ -14,7 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getCustomers, createAppointment } from '@/lib/api';
+import { getCustomers, createAppointment, getCompanySettings } from '@/lib/api';
 import { Customer, ServiceCategory, AppointmentStatus } from '@/lib/types';
 
 function NovoAgendamentoContent() {
@@ -23,6 +23,8 @@ function NovoAgendamentoContent() {
   const initialCustomerId = searchParams.get('customerId') || '';
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [technicians, setTechnicians] = useState<string[]>([]);
+  const [isCustomTech, setIsCustomTech] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -37,7 +39,7 @@ function NovoAgendamentoContent() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('09:00');
   const [durationMin, setDurationMin] = useState('90');
-  const [technicianName, setTechnicianName] = useState('Técnico MG');
+  const [technicianName, setTechnicianName] = useState('Matheus Lobo');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -45,8 +47,21 @@ function NovoAgendamentoContent() {
     async function fetchClients() {
       try {
         setLoading(true);
-        const data = await getCustomers();
+        const [data, company] = await Promise.all([
+          getCustomers(),
+          getCompanySettings(),
+        ]);
         setCustomers(data);
+
+        if (company) {
+          const techList = Array.isArray(company.technicians) && company.technicians.length > 0
+            ? company.technicians
+            : ['Matheus Lobo', 'Técnico Auxiliar'];
+          setTechnicians(techList);
+          const defaultTech = company.default_technician || techList[0];
+          setTechnicianName(defaultTech);
+        }
+
         if (initialCustomerId) {
           const found = data.find((c) => c.id === initialCustomerId);
           if (found && found.addresses && found.addresses.length > 0) {
@@ -292,13 +307,50 @@ function NovoAgendamentoContent() {
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Técnico Responsável
             </label>
-            <input
-              type="text"
-              value={technicianName}
-              onChange={(e) => setTechnicianName(e.target.value)}
-              placeholder="Nome do técnico"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm"
-            />
+            {!isCustomTech ? (
+              <div className="flex gap-2">
+                <select
+                  value={technicianName}
+                  onChange={(e) => {
+                    if (e.target.value === '__custom__') {
+                      setIsCustomTech(true);
+                      setTechnicianName('');
+                    } else {
+                      setTechnicianName(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white font-medium text-slate-800 focus:border-[#0754D8] outline-none"
+                >
+                  {technicians.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                  <option value="__custom__">+ Outro técnico (digitar nome)</option>
+                </select>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={technicianName}
+                  onChange={(e) => setTechnicianName(e.target.value)}
+                  placeholder="Nome do técnico..."
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] outline-none"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomTech(false);
+                    if (technicians.length > 0) setTechnicianName(technicians[0]);
+                  }}
+                  className="px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                >
+                  Lista
+                </button>
+              </div>
+            )}
           </div>
 
           <div>

@@ -81,7 +81,8 @@ function PMOCDetailContent() {
     const cleanPhone = phone.replace(/\D/g, '');
     const phoneWithCountry = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
-    const text = `Olá, *${customer.name}*!\n\nAqui é da *MG Climatização* ❄️🔧\n\nDisponibilizamos o documento oficial do seu *Plano de Manutenção, Operação e Controle (PMOC)* em total conformidade com a *Lei Federal nº 13.589/2018*:\n\n📋 *Registro PMOC:* ${plan.code}\n🏢 *Estabelecimento:* ${plan.establishment_name}\n❄️ *Capacidade Climatizada:* ${plan.total_refrigeration_capacity_btu.toLocaleString()} BTUs (${equipmentLinks.length} aparelhos)\n📅 *Vigência:* ${formatDate(plan.start_date)} até ${formatDate(plan.valid_until)}\n👨‍🔧 *Resp. Técnico:* ${plan.responsible_technician} (${plan.technician_crea_cft || 'CFT/CRT'})\n\nO documento comprova a assepsia do ar perante a Vigilância Sanitária (ANVISA) e Corpo de Bombeiros. Estamos à disposição para qualquer auditoria!`;
+    const companyName = settings?.name || 'MG Climatização';
+    const text = `Olá, *${customer.name}*!\n\nAqui é da *${companyName}* ❄️🔧\n\nDisponibilizamos o documento oficial do seu *Plano de Manutenção, Operação e Controle (PMOC)* em total conformidade com a *Lei Federal nº 13.589/2018*:\n\n📋 *Registro PMOC:* ${plan.code}\n🏢 *Estabelecimento:* ${plan.establishment_name}\n❄️ *Capacidade Climatizada:* ${plan.total_refrigeration_capacity_btu.toLocaleString()} BTUs (${equipmentLinks.length} aparelhos)\n📅 *Vigência:* ${formatDate(plan.start_date)} até ${formatDate(plan.valid_until)}\n👨‍🔧 *Resp. Técnico:* ${plan.responsible_technician} (${plan.technician_crea_cft || 'CFT/CRT'})\n\nO documento comprova a assepsia do ar perante a Vigilância Sanitária (ANVISA) e Corpo de Bombeiros. Estamos à disposição para qualquer auditoria!`;
 
     const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
@@ -133,10 +134,10 @@ function PMOCDetailContent() {
             <p className="font-bold text-[#103778] text-sm">
               {settings?.name || 'MG Climatização'}
             </p>
-            {settings?.cnpj_cpf && <p>CNPJ: {settings.cnpj_cpf}</p>}
-            <p>Manaus / AM • Atendimento Especializado</p>
+            {settings?.cnpj_cpf && <p>CNPJ/CPF: {settings.cnpj_cpf}</p>}
+            <p>{settings?.address || settings?.city_state || 'Manaus - AM'} • Atendimento Especializado</p>
             <p className="font-medium text-[#0754D8]">
-              Contato Técnico: {settings?.whatsapp || '(92) 99123-4567'}
+              Contato: {settings?.phone || settings?.whatsapp || '(92) 99123-4567'}
             </p>
           </div>
         </div>

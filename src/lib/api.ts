@@ -58,7 +58,18 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
     const snap = await getDocs(query(colRef, firestoreLimit(1)));
     if (!snap.empty) {
       const d = snap.docs[0];
-      return { id: d.id, ...(d.data() as any) } as CompanySettings;
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        ...data,
+        city_state: data.city_state || 'Manaus - AM',
+        owner_name: data.owner_name || 'Matheus Lobo',
+        technical_registry: data.technical_registry || 'CFT/CRT Especialista em Refrigeração',
+        default_technician: data.default_technician || 'Matheus Lobo',
+        technicians: Array.isArray(data.technicians) && data.technicians.length > 0
+          ? data.technicians
+          : ['Matheus Lobo', 'Técnico Auxiliar'],
+      } as CompanySettings;
     }
 
     const defaultSettings: Omit<CompanySettings, 'id'> = {
@@ -69,11 +80,20 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
       whatsapp: '5592991234567',
       email: 'contato@mgclimatizacao.com.br',
       address: 'Rua Principal, 100 - Adrianópolis, Manaus - AM',
+      city_state: 'Manaus - AM',
+      owner_name: 'Matheus Lobo',
+      technical_registry: 'CFT/CRT Especialista em Refrigeração',
+      default_technician: 'Matheus Lobo',
+      technicians: ['Matheus Lobo', 'Técnico Auxiliar'],
       default_maintenance_interval_months: 6,
     };
 
-    const newDoc = await addDoc(colRef, defaultSettings);
-    return { id: newDoc.id, ...defaultSettings };
+    try {
+      const newDoc = await addDoc(colRef, defaultSettings);
+      return { id: newDoc.id, ...defaultSettings };
+    } catch {
+      return { id: 'default', ...defaultSettings };
+    }
   } catch (err) {
     console.error('Erro ao buscar configurações da empresa:', err);
     return null;
@@ -85,6 +105,23 @@ export async function updateCompanySettings(
   updates: Partial<CompanySettings>
 ): Promise<boolean> {
   try {
+    const colRef = collection(db, 'company_settings');
+    if (!id || id === 'default') {
+      const snap = await getDocs(query(colRef, firestoreLimit(1)));
+      if (!snap.empty) {
+        await updateDoc(doc(db, 'company_settings', snap.docs[0].id), {
+          ...updates,
+          updated_at: new Date().toISOString(),
+        });
+        return true;
+      }
+      await addDoc(colRef, {
+        ...updates,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      return true;
+    }
     const docRef = doc(db, 'company_settings', id);
     await updateDoc(docRef, { ...updates, updated_at: new Date().toISOString() });
     return true;

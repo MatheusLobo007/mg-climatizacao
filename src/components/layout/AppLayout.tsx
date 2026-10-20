@@ -92,6 +92,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { href: '/garantias', label: 'Termos de Garantia', icon: ShieldCheck, description: 'Certificados timbrados de 30 a 90 dias' },
     { href: '/equipamentos', label: 'Ar-Condicionado', icon: AirVent, description: 'Aparelhos cadastrados e histórico' },
     { href: '/servicos', label: 'Catálogo de Serviços', icon: Wrench, description: 'Tabela de preços e serviços elétricos' },
+    { href: '/configuracoes', label: 'Configurações', icon: Settings, description: 'Dados da empresa, contatos e equipe técnica' },
   ];
 
   const isActive = (path: string) => {

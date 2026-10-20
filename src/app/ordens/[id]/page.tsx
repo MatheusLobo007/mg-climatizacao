@@ -105,6 +105,7 @@ function OrdemDetalheContent() {
   const [editStatus, setEditStatus] = useState<ServiceOrderStatus>('open');
   const [editCategory, setEditCategory] = useState<ServiceCategory>('climatizacao');
   const [editTechnician, setEditTechnician] = useState('');
+  const [isCustomEditTech, setIsCustomEditTech] = useState(false);
   const [editScheduledDate, setEditScheduledDate] = useState('');
   const [editIsCleaning, setEditIsCleaning] = useState(false);
   const [editProblem, setEditProblem] = useState('');
@@ -511,7 +512,8 @@ function OrdemDetalheContent() {
         <div className="text-right text-xs text-slate-600">
           <p className="font-bold text-sm text-[#103778]">{company?.name || 'MG Climatização'}</p>
           <p>{company?.slogan || 'Refrigeração, Climatização e Elétrica Residencial'}</p>
-          <p>Manaus - AM • Telefone: (92) 99123-4567</p>
+          <p>{company?.address || company?.city_state || 'Manaus - AM'} • Tel/WhatsApp: {company?.phone || company?.whatsapp || '(92) 99123-4567'}</p>
+          {company?.cnpj_cpf && <p className="text-[11px] text-slate-500">CNPJ/CPF: {company.cnpj_cpf}</p>}
         </div>
       </div>
 
@@ -1386,13 +1388,51 @@ function OrdemDetalheContent() {
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
                           Técnico Responsável
                         </label>
-                        <input
-                          type="text"
-                          value={editTechnician}
-                          onChange={(e) => setEditTechnician(e.target.value)}
-                          placeholder="Ex: Matheus Lobo / Técnico MG"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
-                        />
+                        {!isCustomEditTech ? (
+                          <div className="flex gap-2">
+                            <select
+                              value={editTechnician}
+                              onChange={(e) => {
+                                if (e.target.value === '__custom__') {
+                                  setIsCustomEditTech(true);
+                                  setEditTechnician('');
+                                } else {
+                                  setEditTechnician(e.target.value);
+                                }
+                              }}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium text-slate-800 focus:border-[#0754D8] outline-none"
+                            >
+                              {(company?.technicians || ['Matheus Lobo', 'Técnico Auxiliar']).map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                              <option value="__custom__">+ Outro técnico (digitar nome)</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={editTechnician}
+                              onChange={(e) => setEditTechnician(e.target.value)}
+                              placeholder="Nome do técnico..."
+                              className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8] outline-none"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCustomEditTech(false);
+                                const defaultT = company?.default_technician || company?.technicians?.[0] || 'Matheus Lobo';
+                                setEditTechnician(defaultT);
+                              }}
+                              className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                            >
+                              Lista
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div>

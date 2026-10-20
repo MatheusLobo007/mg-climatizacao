@@ -15,7 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getCustomers, createPMOCPlan } from '@/lib/api';
+import { getCustomers, createPMOCPlan, getCompanySettings } from '@/lib/api';
 import { Customer, Equipment, PMOCPeriodicity } from '@/lib/types';
 
 export default function NovoPMOCPage() {
@@ -40,7 +40,7 @@ export default function NovoPMOCPage() {
   }>({
     establishment_name: '',
     activity_type: 'Comercial / Serviços',
-    responsible_technician: 'Responsável Técnico MG Climatização',
+    responsible_technician: 'Matheus Lobo',
     technician_crea_cft: 'CFT/CRT Especialista em Refrigeração',
     periodicity: 'mensal',
     start_date: '',
@@ -62,8 +62,20 @@ export default function NovoPMOCPage() {
     async function load() {
       try {
         setLoading(true);
-        const data = await getCustomers();
+        const [data, company] = await Promise.all([
+          getCustomers(),
+          getCompanySettings(),
+        ]);
         setCustomers(data);
+
+        if (company) {
+          setFormData((prev) => ({
+            ...prev,
+            responsible_technician: company.owner_name || company.default_technician || prev.responsible_technician,
+            technician_crea_cft: company.technical_registry || prev.technician_crea_cft,
+            emergency_contact: company.phone || company.whatsapp || prev.emergency_contact,
+          }));
+        }
       } catch (err) {
         console.error('Erro ao carregar clientes:', err);
       } finally {

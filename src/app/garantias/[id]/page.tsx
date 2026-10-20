@@ -129,8 +129,8 @@ function WarrantyDetailContent() {
             <p className="font-bold text-[#103778] text-sm">
               {settings?.name || 'MG Climatização'}
             </p>
-            {settings?.cnpj_cpf && <p>CNPJ: {settings.cnpj_cpf}</p>}
-            <p>Manaus / AM • Atendimento Especializado</p>
+            {settings?.cnpj_cpf && <p>CNPJ/CPF: {settings.cnpj_cpf}</p>}
+            <p>{settings?.address || settings?.city_state || 'Manaus - AM'} • Atendimento Especializado</p>
             <p className="font-medium text-[#0754D8]">
               WhatsApp: {settings?.whatsapp || '(92) 99123-4567'}
             </p>

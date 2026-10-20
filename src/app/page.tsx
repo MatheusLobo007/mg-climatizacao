@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import './site/site.css';
 import { SiteHeader, RevealOnScroll } from './site/SiteClient';
+import { getCompanySettings } from '@/lib/api';
+
+export const instant = false;
 
 export const metadata: Metadata = {
   title: 'MG Climatização | Instalação, Higienização de Ar-Condicionado e Elétrica em Manaus',
@@ -40,14 +43,6 @@ export const metadata: Metadata = {
     type: 'website',
   },
 };
-
-// ⚠️ Número de exemplo — troque pelo WhatsApp oficial da empresa (apenas dígitos, com DDI 55 + DDD)
-const WHATSAPP_NUMBER = '5592999999999';
-const WHATSAPP_DISPLAY = '(92) 99999-9999';
-const CITY = 'Manaus - AM';
-
-const wa = (msg: string) => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
-const WA_DEFAULT = wa('Olá, MG Climatização! Gostaria de solicitar um orçamento.');
 
 const SERVICES = [
   {
@@ -139,10 +134,33 @@ function SectionTag({ children, light = false }: { children: React.ReactNode; li
   );
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  const company = await getCompanySettings();
+
+  const rawWhatsapp = company?.whatsapp || '5592991234567';
+  const cleanDigits = rawWhatsapp.replace(/\D/g, '');
+  const whatsappNumber =
+    cleanDigits.length === 10 || cleanDigits.length === 11
+      ? `55${cleanDigits}`
+      : cleanDigits || '5592991234567';
+
+  const whatsappDisplay =
+    company?.whatsapp && company.whatsapp.includes('(')
+      ? company.whatsapp
+      : cleanDigits.length >= 10
+        ? `(${cleanDigits.slice(-11, -9)}) ${cleanDigits.slice(-9, -4)}-${cleanDigits.slice(-4)}`
+        : '(92) 99123-4567';
+
+  const phoneDisplay = company?.phone || whatsappDisplay;
+  const city = company?.city_state || 'Manaus - AM';
+  const companyName = company?.name || 'MG Climatização';
+
+  const wa = (msg: string) => `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`;
+  const waDefault = wa(`Olá, ${companyName}! Gostaria de solicitar um orçamento.`);
+
   return (
     <div className="mg-site bg-white text-[#263447]">
-      <SiteHeader whatsappUrl={WA_DEFAULT} />
+      <SiteHeader whatsappUrl={waDefault} />
       <RevealOnScroll />
 
       <main>
@@ -161,7 +179,7 @@ export default function HomePage() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8 grid lg:grid-cols-2 gap-14 lg:gap-10 items-center">
             <div className="mg-reveal is-visible">
               <SectionTag light>
-                <MapPin className="w-3.5 h-3.5 -ml-1" /> Atendimento em {CITY}
+                <MapPin className="w-3.5 h-3.5 -ml-1" /> Atendimento em {city}
               </SectionTag>
               <h1 className="mt-6 text-[2.15rem] sm:text-5xl lg:text-[3.3rem] font-extrabold leading-[1.1] tracking-tight text-white">
                 Seu <span className="whitespace-nowrap">ar-condicionado</span>{' '}
@@ -175,7 +193,7 @@ export default function HomePage() {
               <div className="mt-9 flex flex-col sm:flex-row gap-3">
                 <a
                   id="hero-cta-whatsapp"
-                  href={WA_DEFAULT}
+                  href={waDefault}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group inline-flex items-center justify-center gap-2.5 rounded-2xl bg-white px-7 py-4 text-base font-bold text-[#103778] shadow-xl shadow-black/20 transition-all hover:-translate-y-0.5 hover:shadow-2xl active:scale-95"
@@ -591,7 +609,7 @@ export default function HomePage() {
             </p>
             <a
               id="final-cta-whatsapp"
-              href={WA_DEFAULT}
+              href={waDefault}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-10 inline-flex items-center gap-3 rounded-2xl bg-[#25D366] px-8 py-5 text-lg font-bold text-white shadow-2xl shadow-[#25D366]/30 transition-all hover:-translate-y-1 hover:bg-[#1fbf5b] active:scale-95"
@@ -610,11 +628,11 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               <Image src="/logo-mg-white.png" alt="" width={1019} height={403} className="h-10 w-auto" />
               <span className="text-lg font-extrabold text-white font-[family-name:var(--font-heading)]">
-                MG Climatização
+                {companyName}
               </span>
             </div>
             <p className="mt-5 max-w-sm text-sm leading-relaxed">
-              Refrigeração, climatização e elétrica residencial. Conforto e segurança para sua casa e sua empresa.
+              {company?.slogan || 'Refrigeração, climatização e elétrica residencial. Conforto e segurança para sua casa e sua empresa.'}
             </p>
           </div>
           <div>
@@ -633,24 +651,24 @@ export default function HomePage() {
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">Contato</h3>
             <ul className="mt-4 space-y-3 text-sm">
               <li>
-                <a href={WA_DEFAULT} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 hover:text-white">
-                  <MessageCircle className="w-4 h-4 text-[#5aa2ff]" /> {WHATSAPP_DISPLAY}
+                <a href={waDefault} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 hover:text-white">
+                  <MessageCircle className="w-4 h-4 text-[#5aa2ff]" /> {whatsappDisplay}
                 </a>
               </li>
               <li>
-                <a href={`tel:+${WHATSAPP_NUMBER}`} className="flex items-center gap-2.5 hover:text-white">
-                  <Phone className="w-4 h-4 text-[#5aa2ff]" /> Ligar agora
+                <a href={`tel:+${whatsappNumber}`} className="flex items-center gap-2.5 hover:text-white">
+                  <Phone className="w-4 h-4 text-[#5aa2ff]" /> {phoneDisplay}
                 </a>
               </li>
               <li className="flex items-center gap-2.5">
-                <MapPin className="w-4 h-4 text-[#5aa2ff]" /> {CITY}
+                <MapPin className="w-4 h-4 text-[#5aa2ff]" /> {city}
               </li>
             </ul>
           </div>
         </div>
         <div className="border-t border-white/10">
           <div className="mx-auto max-w-7xl px-5 sm:px-8 py-6 text-xs text-blue-100/50 flex flex-col sm:flex-row justify-between gap-2">
-            <p>© 2026 MG Climatização. Todos os direitos reservados.</p>
+            <p>© 2026 {companyName}. Todos os direitos reservados.</p>
             <p>Refrigeração • Climatização • Elétrica</p>
           </div>
         </div>
@@ -659,7 +677,7 @@ export default function HomePage() {
       {/* Botão flutuante do WhatsApp */}
       <a
         id="floating-whatsapp"
-        href={WA_DEFAULT}
+        href={waDefault}
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Falar no WhatsApp"
