@@ -214,7 +214,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <ExternalLink className="w-3 h-3" />
               <span>Ver Site Público</span>
             </Link>
-            <span className="text-[10px] text-white/40">Manaus - AM</span>
+            <span className="text-[10px] text-white/40">Tangará - RN</span>
           </div>
         </div>
       </aside>

@@ -135,9 +135,9 @@ function PMOCDetailContent() {
               {settings?.name || 'MG Climatização'}
             </p>
             {settings?.cnpj_cpf && <p>CNPJ/CPF: {settings.cnpj_cpf}</p>}
-            <p>{settings?.address || settings?.city_state || 'Manaus - AM'} • Atendimento Especializado</p>
+            <p>{settings?.address || settings?.city_state || 'Tangará - RN'} • Atendimento Especializado</p>
             <p className="font-medium text-[#0754D8]">
-              Contato: {settings?.phone || settings?.whatsapp || '(92) 99123-4567'}
+              Contato: {settings?.phone || settings?.whatsapp || '(84) 99461-3185'}
             </p>
           </div>
         </div>
@@ -188,7 +188,7 @@ function PMOCDetailContent() {
                   {address.neighborhood} • {address.city}/{address.state}
                 </p>
               ) : (
-                <p className="text-slate-700 mt-0.5">Manaus - AM</p>
+                <p className="text-slate-700 mt-0.5">Tangará - RN</p>
               )}
               {customer?.phone && (
                 <p className="text-slate-600 mt-1">
@@ -347,7 +347,7 @@ function PMOCDetailContent() {
 
         {/* RODAPÉ DO DOCUMENTO */}
         <div className="mt-8 pt-4 border-t border-slate-100 text-center text-[10px] text-slate-400">
-          MG Climatização • Sistema Integrado de Gestão • Manaus/AM • Lei Federal nº 13.589/2018
+          MG Climatização • Sistema Integrado de Gestão • Tangará/RN • Lei Federal nº 13.589/2018
         </div>
       </div>
     </div>

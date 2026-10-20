@@ -71,7 +71,7 @@ export default function SettingsPage() {
         setWhatsapp(data.whatsapp || '');
         setEmail(data.email || '');
         setAddress(data.address || '');
-        setCityState(data.city_state || 'Manaus - AM');
+        setCityState(data.city_state || 'Tangará - RN');
         setOwnerName(data.owner_name || 'Responsável Técnico');
         setTechnicalRegistry(data.technical_registry || 'CFT/CRT Especialista em Refrigeração');
         setMaintenanceInterval(data.default_maintenance_interval_months || 6);
@@ -146,7 +146,7 @@ export default function SettingsPage() {
         whatsapp: whatsapp.trim() || null,
         email: email.trim() || null,
         address: address.trim() || null,
-        city_state: cityState.trim() || 'Manaus - AM',
+        city_state: cityState.trim() || 'Tangará - RN',
         owner_name: ownerName.trim() || null,
         technical_registry: technicalRegistry.trim() || null,
         default_maintenance_interval_months: Number(maintenanceInterval) || 6,
@@ -327,7 +327,7 @@ export default function SettingsPage() {
                       type="text"
                       value={cityState}
                       onChange={(e) => setCityState(e.target.value)}
-                      placeholder="Ex: Manaus - AM"
+                      placeholder="Ex: Tangará - RN"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>
@@ -341,7 +341,7 @@ export default function SettingsPage() {
                       type="text"
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(maskPhone(e.target.value))}
-                      placeholder="Ex: (92) 99123-4567"
+                      placeholder="Ex: (84) 99461-3185"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>
@@ -354,7 +354,7 @@ export default function SettingsPage() {
                       type="text"
                       value={phone}
                       onChange={(e) => setPhone(maskPhone(e.target.value))}
-                      placeholder="Ex: (92) 3234-5678"
+                      placeholder="Ex: (84) 99461-3185"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>
@@ -380,7 +380,7 @@ export default function SettingsPage() {
                       type="text"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Ex: Rua Principal, 100 - Adrianópolis, Manaus - AM"
+                      placeholder="Ex: Centro, Tangará - RN"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#0754D8] focus:ring-2 focus:ring-[#0754D8]/20 outline-none text-sm transition-all"
                     />
                   </div>

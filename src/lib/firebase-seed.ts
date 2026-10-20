@@ -12,12 +12,13 @@ export async function seedInitialFirebaseData() {
     if (settingsSnap.empty) {
       await addDoc(collection(db, 'company_settings'), {
         name: 'MG Climatização & Elétrica Residencial',
-        slogan: 'Especialistas em Conforto Térmico & Segurança Elétrica em Manaus',
+        slogan: 'Especialistas em Conforto Térmico & Segurança Elétrica em Tangará - RN',
         cnpj_cpf: '45.123.456/0001-78',
-        phone: '(92) 99123-4567',
-        whatsapp: '5592991234567',
+        phone: '(84) 99461-3185',
+        whatsapp: '5584994613185',
         email: 'contato@mgclimatizacao.com.br',
-        address: 'Adrianópolis, Manaus - AM',
+        address: 'Centro, Tangará - RN',
+        city_state: 'Tangará - RN',
         default_maintenance_interval_months: 6,
         created_at: new Date().toISOString(),
       });

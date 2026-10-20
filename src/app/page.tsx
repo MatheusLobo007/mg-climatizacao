@@ -31,9 +31,9 @@ import { getCompanySettings } from '@/lib/api';
 export const instant = false;
 
 export const metadata: Metadata = {
-  title: 'MG Climatização | Instalação, Higienização de Ar-Condicionado e Elétrica em Manaus',
+  title: 'MG Climatização | Instalação, Higienização de Ar-Condicionado e Elétrica em Tangará - RN',
   description:
-    'Instalação, higienização, manutenção preventiva e PMOC de ar-condicionado, além de serviços de elétrica residencial em Manaus. Orçamento rápido pelo WhatsApp e garantia por escrito.',
+    'Instalação, higienização, manutenção preventiva e PMOC de ar-condicionado, além de serviços de elétrica residencial em Tangará - RN e região. Orçamento rápido pelo WhatsApp e garantia por escrito.',
   openGraph: {
     title: 'MG Climatização | Refrigeração, Climatização e Elétrica',
     description:
@@ -137,22 +137,22 @@ function SectionTag({ children, light = false }: { children: React.ReactNode; li
 export default async function HomePage() {
   const company = await getCompanySettings();
 
-  const rawWhatsapp = company?.whatsapp || '5592991234567';
+  const rawWhatsapp = company?.whatsapp || '5584994613185';
   const cleanDigits = rawWhatsapp.replace(/\D/g, '');
   const whatsappNumber =
     cleanDigits.length === 10 || cleanDigits.length === 11
       ? `55${cleanDigits}`
-      : cleanDigits || '5592991234567';
+      : cleanDigits || '5584994613185';
 
   const whatsappDisplay =
     company?.whatsapp && company.whatsapp.includes('(')
       ? company.whatsapp
       : cleanDigits.length >= 10
         ? `(${cleanDigits.slice(-11, -9)}) ${cleanDigits.slice(-9, -4)}-${cleanDigits.slice(-4)}`
-        : '(92) 99123-4567';
+        : '(84) 99461-3185';
 
   const phoneDisplay = company?.phone || whatsappDisplay;
-  const city = company?.city_state || 'Manaus - AM';
+  const city = company?.city_state || 'Tangará - RN';
   const companyName = company?.name || 'MG Climatização';
 
   const wa = (msg: string) => `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`;

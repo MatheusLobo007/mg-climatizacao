@@ -36,8 +36,8 @@ export default function NovoClientePage() {
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
-  const [city, setCity] = useState('Manaus');
-  const [state, setState] = useState('AM');
+  const [city, setCity] = useState('Tangará');
+  const [state, setState] = useState('RN');
   const [zipCode, setZipCode] = useState('');
   const [complement, setComplement] = useState('');
   const [referencePoint, setReferencePoint] = useState('');
@@ -67,8 +67,8 @@ export default function NovoClientePage() {
               street: street.trim(),
               number: number.trim() || 'S/N',
               neighborhood: neighborhood.trim() || undefined,
-              city: city.trim() || 'Manaus',
-              state: state.trim() || 'AM',
+              city: city.trim() || 'Tangará',
+              state: state.trim() || 'RN',
               zip_code: zipCode.trim() || undefined,
               complement: complement.trim() || undefined,
               reference_point: referencePoint.trim() || undefined,
@@ -148,7 +148,7 @@ export default function NovoClientePage() {
                   type="text"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(maskPhone(e.target.value))}
-                  placeholder="(92) 99123-4567"
+                  placeholder="(84) 99461-3185"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
                 />
               </div>
@@ -307,7 +307,7 @@ export default function NovoClientePage() {
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="Manaus"
+                    placeholder="Tangará"
                     className="col-span-2 px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
                   />
                   <input

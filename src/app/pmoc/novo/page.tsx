@@ -45,7 +45,7 @@ export default function NovoPMOCPage() {
     periodicity: 'mensal',
     start_date: '',
     valid_until: '',
-    emergency_contact: '(92) 99123-4567',
+    emergency_contact: '(84) 99461-3185',
     notes: 'Plano em conformidade com a Lei Federal nº 13.589/2018 e Portaria MS nº 3.523/1998.',
   });
 

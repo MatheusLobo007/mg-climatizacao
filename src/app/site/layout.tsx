@@ -4,9 +4,9 @@ import './site.css';
 export const metadata: Metadata = {
   // Ao publicar, defina o domínio real para as imagens de compartilhamento (Open Graph):
   // metadataBase: new URL('https://www.seudominio.com.br'),
-  title: 'MG Climatização | Instalação, Higienização de Ar-Condicionado e Elétrica em Manaus',
+  title: 'MG Climatização | Instalação, Higienização de Ar-Condicionado e Elétrica em Tangará - RN',
   description:
-    'Instalação, higienização, manutenção preventiva e PMOC de ar-condicionado, além de serviços de elétrica residencial em Manaus. Orçamento rápido pelo WhatsApp e garantia por escrito.',
+    'Instalação, higienização, manutenção preventiva e PMOC de ar-condicionado, além de serviços de elétrica residencial em Tangará - RN e região. Orçamento rápido pelo WhatsApp e garantia por escrito.',
   openGraph: {
     title: 'MG Climatização | Refrigeração, Climatização e Elétrica',
     description:

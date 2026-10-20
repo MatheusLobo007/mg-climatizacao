@@ -106,7 +106,7 @@ export default function EstoquePage() {
     contact_name: '',
     phone: '',
     whatsapp: '',
-    city: 'Manaus',
+    city: 'Tangará',
     notes: '',
   });
 
@@ -270,7 +270,7 @@ export default function EstoquePage() {
       contact_name: '',
       phone: '',
       whatsapp: '',
-      city: 'Manaus',
+      city: 'Tangará',
       notes: '',
     });
     setShowSupplierModal(true);
@@ -283,7 +283,7 @@ export default function EstoquePage() {
       contact_name: sup.contact_name || '',
       phone: sup.phone || '',
       whatsapp: sup.whatsapp || '',
-      city: sup.city || 'Manaus',
+      city: sup.city || 'Tangará',
       notes: sup.notes || '',
     });
     setShowSupplierModal(true);
@@ -313,7 +313,7 @@ export default function EstoquePage() {
         contact_name: '',
         phone: '',
         whatsapp: '',
-        city: 'Manaus',
+        city: 'Tangará',
         notes: '',
       });
       await loadData();
@@ -838,7 +838,7 @@ export default function EstoquePage() {
               <Truck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-base font-bold text-[#103778]">Nenhum fornecedor cadastrado</h3>
               <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
-                Guarde contatos de lojas de gás e peças em Manaus para orçamentos rápidos de reposição.
+                Guarde contatos de lojas de gás e peças em Tangará e região para orçamentos rápidos de reposição.
               </p>
               <button
                 onClick={() => openNewSupplierModal()}
@@ -1316,7 +1316,7 @@ export default function EstoquePage() {
                   required
                   value={newSupplier.name}
                   onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
-                  placeholder="Ex: Distribuidora Friopeças Manaus"
+                  placeholder="Ex: Distribuidora Friopeças"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
                 />
               </div>
@@ -1343,7 +1343,7 @@ export default function EstoquePage() {
                     type="text"
                     value={newSupplier.whatsapp || ''}
                     onChange={(e) => setNewSupplier({ ...newSupplier, whatsapp: e.target.value })}
-                    placeholder="Ex: 92981234567"
+                    placeholder="Ex: (84) 99461-3185"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
                   />
                 </div>
@@ -1358,7 +1358,7 @@ export default function EstoquePage() {
                     type="text"
                     value={newSupplier.phone || ''}
                     onChange={(e) => setNewSupplier({ ...newSupplier, phone: maskPhone(e.target.value) })}
-                    placeholder="Ex: (92) 3214-5678"
+                    placeholder="Ex: (84) 3214-5678"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
                   />
                 </div>
@@ -1369,7 +1369,7 @@ export default function EstoquePage() {
                   </label>
                   <input
                     type="text"
-                    value={newSupplier.city || 'Manaus'}
+                    value={newSupplier.city || 'Tangará'}
                     onChange={(e) => setNewSupplier({ ...newSupplier, city: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
                   />

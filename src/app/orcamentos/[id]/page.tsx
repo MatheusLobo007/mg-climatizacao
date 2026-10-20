@@ -278,7 +278,7 @@ function OrcamentoDetalheContent() {
           <div className="text-left sm:text-right text-xs text-slate-500 space-y-0.5">
             <p className="font-bold text-sm text-[#103778]">{company?.name || 'MG Climatização'}</p>
             <p>{company?.slogan || 'Refrigeração, Climatização e Elétrica Residencial'}</p>
-            <p>{company?.address || company?.city_state || 'Manaus - AM'} • Tel/WhatsApp: {company?.phone || company?.whatsapp || '(92) 99123-4567'}</p>
+            <p>{company?.address || company?.city_state || 'Tangará - RN'} • Tel/WhatsApp: {company?.phone || company?.whatsapp || '(84) 99461-3185'}</p>
             <p className="font-mono text-[11px] text-[#0754D8] font-bold">Proposta Nº {quote.code}</p>
           </div>
         </div>

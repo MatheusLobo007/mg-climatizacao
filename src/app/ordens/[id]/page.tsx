@@ -512,7 +512,7 @@ function OrdemDetalheContent() {
         <div className="text-right text-xs text-slate-600">
           <p className="font-bold text-sm text-[#103778]">{company?.name || 'MG Climatização'}</p>
           <p>{company?.slogan || 'Refrigeração, Climatização e Elétrica Residencial'}</p>
-          <p>{company?.address || company?.city_state || 'Manaus - AM'} • Tel/WhatsApp: {company?.phone || company?.whatsapp || '(92) 99123-4567'}</p>
+          <p>{company?.address || company?.city_state || 'Tangará - RN'} • Tel/WhatsApp: {company?.phone || company?.whatsapp || '(84) 99461-3185'}</p>
           {company?.cnpj_cpf && <p className="text-[11px] text-slate-500">CNPJ/CPF: {company.cnpj_cpf}</p>}
         </div>
       </div>

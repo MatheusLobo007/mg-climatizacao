@@ -50,8 +50,8 @@ function ClienteDetalheContent() {
   const [newStreet, setNewStreet] = useState('');
   const [newNumber, setNewNumber] = useState('');
   const [newNeighborhood, setNewNeighborhood] = useState('');
-  const [newCity, setNewCity] = useState('Manaus');
-  const [newState, setNewState] = useState('AM');
+  const [newCity, setNewCity] = useState('Tangará');
+  const [newState, setNewState] = useState('RN');
   const [newLabel, setNewLabel] = useState('Comercial');
   const [savingAddr, setSavingAddr] = useState(false);
 
