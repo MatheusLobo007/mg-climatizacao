@@ -6,7 +6,13 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Regra padrão: Apenas usuários autenticados têm acesso de leitura e escrita
+    // Catálogo de serviços: leitura pública, edição apenas autenticada
+    match /service_catalog/{serviceId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Regra padrão: Apenas usuários autenticados têm acesso a clientes, ordens, finanças, etc.
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
