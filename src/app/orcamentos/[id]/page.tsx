@@ -23,15 +23,20 @@ import {
   AlertTriangle,
   Send,
   XCircle,
+  Edit2,
+  Trash2,
+  Plus,
+  X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
   getQuoteById,
+  updateQuote,
   updateQuoteStatus,
   convertQuoteToServiceOrder,
   getCompanySettings,
 } from '@/lib/api';
-import { Quote, CompanySettings, QuoteStatus } from '@/lib/types';
+import { Quote, CompanySettings, QuoteStatus, QuoteItem } from '@/lib/types';
 import {
   formatDate,
   formatCurrency,
@@ -100,6 +105,111 @@ function OrcamentoDetalheContent() {
       setErrorMsg(err.message || 'Falha ao converter em Ordem de Serviço.');
     } finally {
       setConverting(false);
+    }
+  };
+
+  // Estados de Edição da Proposta
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editValidUntil, setEditValidUntil] = useState('');
+  const [editPaymentTerms, setEditPaymentTerms] = useState('');
+  const [editWarrantyTerms, setEditWarrantyTerms] = useState('');
+  const [editExecutionTime, setEditExecutionTime] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editDiscount, setEditDiscount] = useState('0');
+  const [editItems, setEditItems] = useState<
+    Array<{
+      id?: string;
+      item_type: 'service' | 'material';
+      name: string;
+      quantity: number;
+      unit_price: number;
+    }>
+  >([]);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleOpenEditModal = () => {
+    if (!quote) return;
+    setEditValidUntil(quote.valid_until ? quote.valid_until.split('T')[0] : '');
+    setEditPaymentTerms(quote.payment_terms || 'Pix, Dinheiro ou Cartão de Crédito');
+    setEditWarrantyTerms(quote.warranty_terms || '90 dias de garantia sobre a mão de obra');
+    setEditExecutionTime(quote.execution_time_estimate || '');
+    setEditNotes(quote.notes || '');
+    setEditDiscount(String(quote.discount || 0));
+    setEditItems(
+      quote.items && quote.items.length > 0
+        ? quote.items.map((i) => ({
+            id: i.id,
+            item_type: i.item_type || 'service',
+            name: i.name,
+            quantity: i.quantity || 1,
+            unit_price: i.unit_price || 0,
+          }))
+        : [
+            {
+              item_type: 'service',
+              name: 'Serviço de Climatização',
+              quantity: 1,
+              unit_price: quote.subtotal || 0,
+            },
+          ]
+    );
+    setShowEditModal(true);
+  };
+
+  const handleAddItem = () => {
+    setEditItems((prev) => [
+      ...prev,
+      { item_type: 'service', name: '', quantity: 1, unit_price: 0 },
+    ]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setEditItems((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleItemChange = (index: number, field: string, value: any) => {
+    setEditItems((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const calcEditSubtotal = () =>
+    editItems.reduce((acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
+
+  const calcEditTotal = () =>
+    Math.max(0, calcEditSubtotal() - (parseFloat(editDiscount) || 0));
+
+  const handleSaveQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quote) return;
+
+    try {
+      setEditSaving(true);
+      await updateQuote(quote.id, {
+        valid_until: editValidUntil ? new Date(editValidUntil).toISOString() : quote.valid_until,
+        payment_terms: editPaymentTerms.trim(),
+        warranty_terms: editWarrantyTerms.trim(),
+        execution_time_estimate: editExecutionTime.trim() || undefined,
+        notes: editNotes.trim() || undefined,
+        discount: parseFloat(editDiscount) || 0,
+        items: editItems.map((i) => ({
+          id: i.id,
+          item_type: i.item_type,
+          description: i.name,
+          name: i.name,
+          quantity: Number(i.quantity) || 1,
+          unit_price: Number(i.unit_price) || 0,
+          total_price: (Number(i.quantity) || 1) * (Number(i.unit_price) || 0),
+        })) as any,
+      });
+
+      setShowEditModal(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao salvar proposta:', err);
+      alert(err.message || 'Erro ao atualizar orçamento.');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -181,6 +291,14 @@ function OrcamentoDetalheContent() {
               <span>Enviar WhatsApp</span>
             </a>
           )}
+
+          <button
+            onClick={handleOpenEditModal}
+            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-[#0754D8] border border-blue-200 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all"
+          >
+            <Edit2 className="w-4 h-4 text-[#0754D8]" />
+            <span>Editar Proposta</span>
+          </button>
 
           <button
             onClick={() => window.print()}
@@ -425,6 +543,241 @@ function OrcamentoDetalheContent() {
           </div>
         </div>
       </div>
+
+      {/* MODAL EDITAR PROPOSTA */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-[#103778]">
+                  Editar Orçamento {quote.code}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Modifique itens, condições comerciais, garantia e prazos da proposta
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuote} className="space-y-4">
+              {/* ITENS DO ORÇAMENTO */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Itens / Serviços da Proposta
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="flex items-center gap-1 text-xs font-bold text-[#0754D8] hover:bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar Item</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {editItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex flex-col sm:flex-row items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50"
+                    >
+                      <select
+                        value={item.item_type}
+                        onChange={(e) => handleItemChange(idx, 'item_type', e.target.value)}
+                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white font-semibold text-slate-700 w-full sm:w-28"
+                      >
+                        <option value="service">Serviço</option>
+                        <option value="material">Material / Peça</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        required
+                        value={item.name}
+                        onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
+                        placeholder="Descrição do serviço ou material"
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1 w-full"
+                      />
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="w-16">
+                          <input
+                            type="number"
+                            min="1"
+                            required
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                            placeholder="Qtd"
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-xs text-center bg-white font-semibold"
+                          />
+                        </div>
+
+                        <div className="w-24">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={item.unit_price}
+                            onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
+                            placeholder="Preço Unit."
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-xs text-right bg-white font-bold text-[#0754D8]"
+                          />
+                        </div>
+
+                        <span className="text-xs font-bold text-slate-700 w-24 text-right hidden sm:block">
+                          {formatCurrency((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(idx)}
+                          disabled={editItems.length <= 1}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30"
+                          title="Remover Item"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CONDIÇÕES COMERCIAIS & PRAZOS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Válido Até
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editValidUntil}
+                    onChange={(e) => setEditValidUntil(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Prazo Estimado de Execução
+                  </label>
+                  <input
+                    type="text"
+                    value={editExecutionTime}
+                    onChange={(e) => setEditExecutionTime(e.target.value)}
+                    placeholder="Ex: 1 dia útil, 4 horas, A combinar"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Formas e Condições de Pagamento
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editPaymentTerms}
+                    onChange={(e) => setEditPaymentTerms(e.target.value)}
+                    placeholder="Ex: Pix, 50% entrada + 50% entrega"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Termos de Garantia
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editWarrantyTerms}
+                    onChange={(e) => setEditWarrantyTerms(e.target.value)}
+                    placeholder="Ex: 90 dias sobre mão de obra"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Desconto Especial (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editDiscount}
+                    onChange={(e) => setEditDiscount(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-red-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Observações Internas / Técnicas
+                  </label>
+                  <input
+                    type="text"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Anotações adicionais da proposta"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-700"
+                  />
+                </div>
+              </div>
+
+              {/* RESUMO DOS VALORES RECALCULADOS */}
+              <div className="bg-[#EAF3FF] p-3.5 rounded-xl flex items-center justify-between text-xs border border-blue-200">
+                <div className="space-y-0.5">
+                  <div className="text-slate-600">
+                    Subtotal: <strong className="text-slate-800">{formatCurrency(calcEditSubtotal())}</strong>
+                  </div>
+                  {parseFloat(editDiscount) > 0 && (
+                    <div className="text-red-600 font-semibold">
+                      Desconto: - {formatCurrency(parseFloat(editDiscount))}
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[#0754D8] font-bold uppercase block">Total Atualizado</span>
+                  <span className="text-base font-extrabold text-[#103778]">
+                    {formatCurrency(calcEditTotal())}
+                  </span>
+                </div>
+              </div>
+
+              {/* BOTÕES */}
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  disabled={editSaving}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-md disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {editSaving ? 'Salvando...' : 'Salvar Proposta'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

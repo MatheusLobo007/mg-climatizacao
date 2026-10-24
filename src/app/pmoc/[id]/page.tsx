@@ -18,9 +18,11 @@ import {
   User,
   Wrench,
   Check,
+  Edit2,
+  X,
 } from 'lucide-react';
 import { LogoMG } from '@/components/brand/LogoMG';
-import { getPMOCPlanById, getCompanySettings } from '@/lib/api';
+import { getPMOCPlanById, updatePMOCPlan, getCompanySettings } from '@/lib/api';
 import { PMOCPlan, CompanySettings } from '@/lib/types';
 import { formatDate } from '@/lib/formatters';
 
@@ -32,23 +34,76 @@ function PMOCDetailContent() {
   const [settings, setSettings] = useState<CompanySettings | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      if (!id) return;
-      try {
-        setLoading(true);
-        const [planData, setts] = await Promise.all([
-          getPMOCPlanById(id),
-          getCompanySettings(),
-        ]);
-        setPlan(planData);
-        setSettings(setts);
-      } catch (err) {
-        console.error('Erro ao carregar PMOC:', err);
-      } finally {
-        setLoading(false);
-      }
+  // Estados de Edição do PMOC
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editEstablishmentName, setEditEstablishmentName] = useState('');
+  const [editResponsibleTech, setEditResponsibleTech] = useState('');
+  const [editCreaCft, setEditCreaCft] = useState('');
+  const [editArtRrt, setEditArtRrt] = useState('');
+  const [editEmergencyPhone, setEditEmergencyPhone] = useState('');
+  const [editPeriodicity, setEditPeriodicity] = useState<'mensal' | 'bimestral' | 'trimestral' | 'semestral'>('mensal');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editValidUntil, setEditValidUntil] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleOpenEditModal = () => {
+    if (!plan) return;
+    setEditEstablishmentName(plan.establishment_name || '');
+    setEditResponsibleTech(plan.responsible_technician || '');
+    setEditCreaCft(plan.technician_crea_cft || '');
+    setEditArtRrt(plan.art_rrt_number || '');
+    setEditEmergencyPhone(plan.emergency_phone || '');
+    setEditPeriodicity((plan.periodicity as any) || 'mensal');
+    setEditStartDate(plan.start_date ? plan.start_date.split('T')[0] : '');
+    setEditValidUntil(plan.valid_until ? plan.valid_until.split('T')[0] : '');
+    setShowEditModal(true);
+  };
+
+  const handleSavePMOC = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!plan) return;
+
+    setEditSaving(true);
+    try {
+      await updatePMOCPlan(plan.id, {
+        establishment_name: editEstablishmentName.trim(),
+        responsible_technician: editResponsibleTech.trim(),
+        technician_crea_cft: editCreaCft.trim() || undefined,
+        art_rrt_number: editArtRrt.trim() || undefined,
+        emergency_phone: editEmergencyPhone.trim() || undefined,
+        periodicity: editPeriodicity,
+        start_date: editStartDate ? new Date(editStartDate).toISOString() : plan.start_date,
+        valid_until: editValidUntil ? new Date(editValidUntil).toISOString() : plan.valid_until,
+      });
+
+      setShowEditModal(false);
+      await load();
+    } catch (err: any) {
+      console.error('Erro ao atualizar PMOC:', err);
+      alert(err.message || 'Erro ao salvar alterações no Plano PMOC.');
+    } finally {
+      setEditSaving(false);
     }
+  };
+
+  async function load() {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const [planData, setts] = await Promise.all([
+        getPMOCPlanById(id),
+        getCompanySettings(),
+      ]);
+      setPlan(planData);
+      setSettings(setts);
+    } catch (err) {
+      console.error('Erro ao carregar PMOC:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
     load();
   }, [id]);
 
@@ -101,6 +156,14 @@ function PMOCDetailContent() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleOpenEditModal}
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-[#0754D8] border border-blue-200 py-2 px-3.5 rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all"
+          >
+            <Edit2 className="w-4 h-4 text-[#0754D8]" />
+            <span>Editar PMOC</span>
+          </button>
+
           <button
             onClick={handleSendWhatsApp}
             className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3.5 rounded-xl text-xs font-semibold shadow-xs"
@@ -350,6 +413,164 @@ function PMOCDetailContent() {
           MG Climatização • Sistema Integrado de Gestão • Tangará/RN • Lei Federal nº 13.589/2018
         </div>
       </div>
+
+      {/* MODAL EDITAR PLANO PMOC */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-[#103778]">
+                  Editar Plano PMOC {plan.code}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Atualize dados de conformidade técnica, registro CFT/CREA e vigência
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePMOC} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nome do Estabelecimento / Edificação *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editEstablishmentName}
+                  onChange={(e) => setEditEstablishmentName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:border-[#0754D8]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Responsável Técnico *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editResponsibleTech}
+                    onChange={(e) => setEditResponsibleTech(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Registro CREA / CFT
+                  </label>
+                  <input
+                    type="text"
+                    value={editCreaCft}
+                    onChange={(e) => setEditCreaCft(e.target.value)}
+                    placeholder="Ex: CFT/CRT 12345678-RN"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Número da ART / TRT
+                  </label>
+                  <input
+                    type="text"
+                    value={editArtRrt}
+                    onChange={(e) => setEditArtRrt(e.target.value)}
+                    placeholder="Ex: TRT-2026-987654"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Periodicidade do Plano
+                  </label>
+                  <select
+                    value={editPeriodicity}
+                    onChange={(e) => setEditPeriodicity(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:border-[#0754D8]"
+                  >
+                    <option value="mensal">Mensal (Padrão ANVISA)</option>
+                    <option value="bimestral">Bimestral</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Início da Vigência
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Término da Vigência (Válido Até)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editValidUntil}
+                    onChange={(e) => setEditValidUntil(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-emerald-700 focus:border-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Telefone de Atendimento de Emergência (Plantão 24h)
+                </label>
+                <input
+                  type="text"
+                  value={editEmergencyPhone}
+                  onChange={(e) => setEditEmergencyPhone(e.target.value)}
+                  placeholder="Ex: (84) 99461-3185"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  disabled={editSaving}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-md disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {editSaving ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

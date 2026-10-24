@@ -19,10 +19,31 @@ import {
   AlertTriangle,
   FileText,
   Trash2,
+  Edit2,
+  Save,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getCustomerById, getServiceOrders, addCustomerAddress, deleteEquipment } from '@/lib/api';
-import { Customer, ServiceOrder, Equipment } from '@/lib/types';
+import {
+  getCustomerById,
+  getServiceOrders,
+  addCustomerAddress,
+  updateCustomerAddress,
+  deleteCustomerAddress,
+  deleteEquipment,
+  updateCustomer,
+  updateEquipment,
+} from '@/lib/api';
+import {
+  Customer,
+  ServiceOrder,
+  Equipment,
+  CustomerAddress,
+  EquipmentType,
+  EquipmentStatus,
+  CustomerStatus,
+} from '@/lib/types';
 import {
   formatPhone,
   formatDate,
@@ -45,6 +66,20 @@ function ClienteDetalheContent() {
   const [equipmentToDelete, setEquipmentToDelete] = useState<Equipment | null>(null);
   const [deletingEq, setDeletingEq] = useState(false);
 
+  // Modal Edição Cliente
+  const [showEditCustomer, setShowEditCustomer] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    whatsapp: '',
+    email: '',
+    document_cpf_cnpj: '',
+    origin: '',
+    status: 'active' as CustomerStatus,
+    notes: '',
+  });
+
   // Modal para adicionar endereço extra
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [newStreet, setNewStreet] = useState('');
@@ -54,6 +89,51 @@ function ClienteDetalheContent() {
   const [newState, setNewState] = useState('RN');
   const [newLabel, setNewLabel] = useState('Comercial');
   const [savingAddr, setSavingAddr] = useState(false);
+
+  // Modal Edição Endereço
+  const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
+  const [savingEditAddr, setSavingEditAddr] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    label: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: 'Tangará',
+    state: 'RN',
+    zip_code: '',
+    reference_point: '',
+    is_primary: false,
+  });
+
+  // Modal Edição Equipamento
+  const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
+  const [savingEditEq, setSavingEditEq] = useState(false);
+  const [equipmentForm, setEquipmentForm] = useState<{
+    environment: string;
+    type: EquipmentType;
+    brand: string;
+    model: string;
+    btu_capacity: string | number;
+    serial_number: string;
+    installation_date: string;
+    last_cleaning_date: string;
+    maintenance_interval_months: number;
+    status: EquipmentStatus;
+    notes: string;
+  }>({
+    environment: '',
+    type: 'split',
+    brand: '',
+    model: '',
+    btu_capacity: '9000',
+    serial_number: '',
+    installation_date: '',
+    last_cleaning_date: '',
+    maintenance_interval_months: 6,
+    status: 'active',
+    notes: '',
+  });
 
   async function loadData() {
     try {
@@ -116,6 +196,145 @@ function ClienteDetalheContent() {
       alert(err.message || 'Erro ao excluir equipamento.');
     } finally {
       setDeletingEq(false);
+    }
+  };
+
+  const openEditCustomer = () => {
+    if (!customer) return;
+    setCustomerForm({
+      name: customer.name || '',
+      phone: customer.phone || '',
+      whatsapp: customer.whatsapp || '',
+      email: customer.email || '',
+      document_cpf_cnpj: customer.document_cpf_cnpj || '',
+      origin: customer.origin || 'indicacao',
+      status: customer.status || 'active',
+      notes: customer.notes || '',
+    });
+    setShowEditCustomer(true);
+  };
+
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerForm.name.trim()) return;
+    try {
+      setSavingCustomer(true);
+      await updateCustomer(customerId, {
+        name: customerForm.name.trim(),
+        phone: customerForm.phone.trim() || null,
+        whatsapp: customerForm.whatsapp.trim() || null,
+        email: customerForm.email.trim() || null,
+        document_cpf_cnpj: customerForm.document_cpf_cnpj.trim() || null,
+        origin: customerForm.origin.trim() || null,
+        status: customerForm.status,
+        notes: customerForm.notes.trim() || null,
+      });
+      setShowEditCustomer(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao atualizar cliente:', err);
+      alert(err.message || 'Erro ao salvar alterações do cliente.');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const openEditAddress = (addr: CustomerAddress) => {
+    setEditingAddress(addr);
+    setAddressForm({
+      label: addr.label || 'Principal',
+      street: addr.street || '',
+      number: addr.number || '',
+      complement: addr.complement || '',
+      neighborhood: addr.neighborhood || '',
+      city: addr.city || 'Tangará',
+      state: addr.state || 'RN',
+      zip_code: addr.zip_code || '',
+      reference_point: addr.reference_point || '',
+      is_primary: addr.is_primary ?? false,
+    });
+  };
+
+  const handleSaveEditAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAddress || !addressForm.street.trim() || !addressForm.number.trim()) return;
+    try {
+      setSavingEditAddr(true);
+      await updateCustomerAddress(editingAddress.id, {
+        label: addressForm.label.trim() || 'Endereço',
+        street: addressForm.street.trim(),
+        number: addressForm.number.trim(),
+        complement: addressForm.complement.trim() || null,
+        neighborhood: addressForm.neighborhood.trim() || null,
+        city: addressForm.city.trim() || 'Tangará',
+        state: addressForm.state.trim() || 'RN',
+        zip_code: addressForm.zip_code.trim() || null,
+        reference_point: addressForm.reference_point.trim() || null,
+        is_primary: addressForm.is_primary,
+      });
+      setEditingAddress(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao atualizar endereço:', err);
+      alert(err.message || 'Erro ao atualizar endereço.');
+    } finally {
+      setSavingEditAddr(false);
+    }
+  };
+
+  const handleDeleteAddress = async (addrId: string) => {
+    if (!confirm('Deseja realmente excluir este endereço?')) return;
+    try {
+      await deleteCustomerAddress(addrId);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir endereço:', err);
+      alert(err.message || 'Erro ao excluir endereço.');
+    }
+  };
+
+  const openEditEquipment = (eq: Equipment) => {
+    setEditingEquipment(eq);
+    setEquipmentForm({
+      environment: eq.environment || '',
+      type: eq.type || 'split',
+      brand: eq.brand || '',
+      model: eq.model || '',
+      btu_capacity: eq.btu_capacity ? String(eq.btu_capacity) : '9000',
+      serial_number: eq.serial_number || '',
+      installation_date: eq.installation_date || '',
+      last_cleaning_date: eq.last_cleaning_date || '',
+      maintenance_interval_months: eq.maintenance_interval_months || 6,
+      status: eq.status || 'active',
+      notes: eq.notes || '',
+    });
+  };
+
+  const handleSaveEditEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEquipment || !equipmentForm.environment.trim()) return;
+    try {
+      setSavingEditEq(true);
+      await updateEquipment(editingEquipment.id, {
+        environment: equipmentForm.environment.trim(),
+        type: equipmentForm.type,
+        brand: equipmentForm.brand.trim() || null,
+        model: equipmentForm.model.trim() || null,
+        btu_capacity: equipmentForm.btu_capacity ? parseInt(String(equipmentForm.btu_capacity), 10) : null,
+        serial_number: equipmentForm.serial_number.trim() || null,
+        installation_date: equipmentForm.installation_date || null,
+        last_cleaning_date: equipmentForm.last_cleaning_date || null,
+        maintenance_interval_months: Number(equipmentForm.maintenance_interval_months) || 6,
+        status: equipmentForm.status,
+        notes: equipmentForm.notes.trim() || null,
+      });
+      setEditingEquipment(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao atualizar aparelho:', err);
+      alert(err.message || 'Erro ao atualizar aparelho.');
+    } finally {
+      setSavingEditEq(false);
     }
   };
 
@@ -184,6 +403,17 @@ function ClienteDetalheContent() {
 
         {/* Ações Diretas */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Botão Editar Cliente */}
+          <button
+            type="button"
+            onClick={openEditCustomer}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-xs active:scale-95 transition-all"
+            title="Editar informações cadastrais do cliente"
+          >
+            <Edit2 className="w-4 h-4 text-[#0754D8]" />
+            <span>Editar Cliente</span>
+          </button>
+
           {phone && (
             <a
               href={waLink}
@@ -217,10 +447,21 @@ function ClienteDetalheContent() {
         <div className="space-y-6">
           {/* Card Contato */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-            <h3 className="text-sm font-bold text-[#103778] mb-3 flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#0754D8]" />
-              <span>Contatos e Informações</span>
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-[#103778] flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#0754D8]" />
+                <span>Contatos e Informações</span>
+              </h3>
+              <button
+                type="button"
+                onClick={openEditCustomer}
+                className="text-[11px] font-bold text-[#0754D8] hover:underline flex items-center gap-1"
+                title="Editar dados cadastrais"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Editar</span>
+              </button>
+            </div>
 
             <div className="space-y-2.5 text-xs text-slate-600">
               {customer.phone && (
@@ -301,7 +542,28 @@ function ClienteDetalheContent() {
                           Ref: {addr.reference_point}
                         </p>
                       )}
-                      <div className="mt-2 pt-2 border-t border-slate-200 flex justify-end">
+                      <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditAddress(addr)}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#0754D8] transition-colors"
+                            title="Editar este endereço"
+                          >
+                            <Edit2 className="w-3 h-3 text-[#0754D8]" />
+                            <span>Editar</span>
+                          </button>
+                          {customer.addresses && customer.addresses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAddress(addr.id)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors"
+                              title="Excluir endereço"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                         <a
                           href={mapsLink}
                           target="_blank"
@@ -439,15 +701,27 @@ function ClienteDetalheContent() {
                       </div>
 
                       <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() => setEquipmentToDelete(eq)}
-                          className="text-xs font-semibold text-slate-400 hover:text-red-600 hover:bg-red-50 py-1 px-2 rounded-lg transition-colors flex items-center gap-1"
-                          title="Excluir este ar-condicionado"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Excluir</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEditEquipment(eq)}
+                            className="text-xs font-semibold text-slate-600 hover:text-[#0754D8] hover:bg-blue-50 py-1 px-2 rounded-lg transition-colors flex items-center gap-1"
+                            title="Editar este ar-condicionado"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-[#0754D8]" />
+                            <span>Editar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setEquipmentToDelete(eq)}
+                            className="text-xs font-semibold text-slate-400 hover:text-red-600 hover:bg-red-50 py-1 px-2 rounded-lg transition-colors flex items-center gap-1"
+                            title="Excluir este ar-condicionado"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Excluir</span>
+                          </button>
+                        </div>
 
                         <Link
                           href={`/ordens/nova?customerId=${customer.id}&equipmentId=${eq.id}`}
@@ -605,6 +879,536 @@ function ClienteDetalheContent() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: EDITAR INFORMAÇÕES DO CLIENTE */}
+      {showEditCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-50 text-[#0754D8]">
+                  <Edit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#103778]">Editar Informações do Cliente</h3>
+                  <p className="text-xs text-slate-500">Altere contatos, documentos e notas sem perder dados</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditCustomer(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nome Completo / Razão Social *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customerForm.name}
+                  onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                  placeholder="Nome do cliente ou empresa"
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    WhatsApp (Principal)
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.whatsapp}
+                    onChange={(e) => setCustomerForm({ ...customerForm, whatsapp: e.target.value })}
+                    placeholder="(84) 99999-9999"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Telefone Secundário
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.phone}
+                    onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                    placeholder="(84) 3333-3333"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    E-mail
+                  </label>
+                  <input
+                    type="email"
+                    value={customerForm.email}
+                    onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                    placeholder="cliente@email.com"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    CPF ou CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.document_cpf_cnpj}
+                    onChange={(e) => setCustomerForm({ ...customerForm, document_cpf_cnpj: e.target.value })}
+                    placeholder="000.000.000-00"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Origem do Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.origin}
+                    onChange={(e) => setCustomerForm({ ...customerForm, origin: e.target.value })}
+                    placeholder="Ex: Indicação, Instagram, Google"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Status do Cadastro
+                  </label>
+                  <select
+                    value={customerForm.status}
+                    onChange={(e) => setCustomerForm({ ...customerForm, status: e.target.value as CustomerStatus })}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  >
+                    <option value="active">Ativo (Em atendimento regular)</option>
+                    <option value="archived">Arquivado (Inativo)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Observações Gerais
+                </label>
+                <textarea
+                  rows={3}
+                  value={customerForm.notes}
+                  onChange={(e) => setCustomerForm({ ...customerForm, notes: e.target.value })}
+                  placeholder="Instruções de acesso, preferências do cliente, etc."
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditCustomer(false)}
+                  disabled={savingCustomer}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCustomer}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-xs active:scale-95 transition-all disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingCustomer ? 'Salvando...' : 'Salvar Alterações'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: EDITAR ENDEREÇO */}
+      {editingAddress && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-50 text-[#0754D8]">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#103778]">Editar Endereço</h3>
+                  <p className="text-xs text-slate-500">Corrija os dados de atendimento do imóvel</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingAddress(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditAddress} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Identificação do Local
+                </label>
+                <input
+                  type="text"
+                  value={addressForm.label}
+                  onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
+                  placeholder="Ex: Casa, Escritório, Sede"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Rua / Avenida *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={addressForm.street}
+                  onChange={(e) => setAddressForm({ ...addressForm, street: e.target.value })}
+                  placeholder="Nome da rua ou avenida"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Número *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addressForm.number}
+                    onChange={(e) => setAddressForm({ ...addressForm, number: e.target.value })}
+                    placeholder="Nº ou S/N"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Complemento
+                  </label>
+                  <input
+                    type="text"
+                    value={addressForm.complement}
+                    onChange={(e) => setAddressForm({ ...addressForm, complement: e.target.value })}
+                    placeholder="Apto, Bloco, Sala"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Bairro
+                  </label>
+                  <input
+                    type="text"
+                    value={addressForm.neighborhood}
+                    onChange={(e) => setAddressForm({ ...addressForm, neighborhood: e.target.value })}
+                    placeholder="Bairro"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Cidade / UF
+                  </label>
+                  <div className="grid grid-cols-3 gap-1">
+                    <input
+                      type="text"
+                      value={addressForm.city}
+                      onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                      placeholder="Cidade"
+                      className="col-span-2 w-full text-xs px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                    />
+                    <input
+                      type="text"
+                      value={addressForm.state}
+                      onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
+                      placeholder="UF"
+                      className="w-full text-xs px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Ponto de Referência
+                </label>
+                <input
+                  type="text"
+                  value={addressForm.reference_point}
+                  onChange={(e) => setAddressForm({ ...addressForm, reference_point: e.target.value })}
+                  placeholder="Ex: Próximo à praça central, em frente à farmácia"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="pt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addressForm.is_primary}
+                    onChange={(e) => setAddressForm({ ...addressForm, is_primary: e.target.checked })}
+                    className="rounded border-slate-300 text-[#0754D8] focus:ring-[#0754D8]"
+                  />
+                  <span className="text-xs font-medium text-slate-700">Definir como endereço principal</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingAddress(null)}
+                  disabled={savingEditAddr}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditAddr}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-xs active:scale-95 transition-all disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingEditAddr ? 'Salvando...' : 'Salvar Endereço'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: EDITAR APARELHO DE AR-CONDICIONADO */}
+      {editingEquipment && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-50 text-[#0754D8]">
+                  <AirVent className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#103778]">Editar Ar-Condicionado</h3>
+                  <p className="text-xs text-slate-500">Altere dados técnicos, ciclo preventivo e ambiente</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingEquipment(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditEquipment} className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Ambiente / Cômodo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={equipmentForm.environment}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, environment: e.target.value })}
+                    placeholder="Ex: Suíte Master, Sala, Recepção"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Tipo de Aparelho
+                  </label>
+                  <select
+                    value={equipmentForm.type}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, type: e.target.value as EquipmentType })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  >
+                    <option value="split">Split Hi-Wall</option>
+                    <option value="inverter">Split Inverter</option>
+                    <option value="cassete">Cassete</option>
+                    <option value="piso_teto">Piso Teto</option>
+                    <option value="janela">Janela (ACJ)</option>
+                    <option value="multi_split">Multi Split</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Marca
+                  </label>
+                  <input
+                    type="text"
+                    value={equipmentForm.brand}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, brand: e.target.value })}
+                    placeholder="Ex: Gree, LG, Midea"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Modelo
+                  </label>
+                  <input
+                    type="text"
+                    value={equipmentForm.model}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, model: e.target.value })}
+                    placeholder="Ex: Eco Garden"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Capacidade (BTUs)
+                  </label>
+                  <input
+                    type="number"
+                    step="500"
+                    value={equipmentForm.btu_capacity}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, btu_capacity: e.target.value })}
+                    placeholder="Ex: 9000, 12000"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Número de Série
+                  </label>
+                  <input
+                    type="text"
+                    value={equipmentForm.serial_number}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, serial_number: e.target.value })}
+                    placeholder="Opcional"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Data de Instalação
+                  </label>
+                  <input
+                    type="date"
+                    value={equipmentForm.installation_date}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, installation_date: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              {/* Bloco de Ciclo de Limpeza Preventiva */}
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-3">
+                <span className="block text-xs font-bold text-[#103778]">
+                  Ciclo Preventivo & Lembrete de Higienização
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Data da Última Limpeza
+                    </label>
+                    <input
+                      type="date"
+                      value={equipmentForm.last_cleaning_date}
+                      onChange={(e) => setEquipmentForm({ ...equipmentForm, last_cleaning_date: e.target.value })}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Intervalo de Manutenção
+                    </label>
+                    <select
+                      value={equipmentForm.maintenance_interval_months}
+                      onChange={(e) => setEquipmentForm({ ...equipmentForm, maintenance_interval_months: Number(e.target.value) })}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+                    >
+                      <option value={3}>A cada 3 meses (Comércio intenso)</option>
+                      <option value={6}>A cada 6 meses (Padrão residencial)</option>
+                      <option value={12}>A cada 12 meses (Uso esporádico)</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 italic">
+                  * A próxima data de limpeza e o lembrete preventivo no WhatsApp serão recalculados automaticamente ao salvar.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Status do Aparelho
+                  </label>
+                  <select
+                    value={equipmentForm.status}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, status: e.target.value as EquipmentStatus })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  >
+                    <option value="active">Ativo (Em funcionamento)</option>
+                    <option value="inactive">Inativo (Desativado / Aguardando troca)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Notas Técnicas
+                  </label>
+                  <input
+                    type="text"
+                    value={equipmentForm.notes}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, notes: e.target.value })}
+                    placeholder="Ex: Gás R410A, 220V"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingEquipment(null)}
+                  disabled={savingEditEq}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditEq}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-xs active:scale-95 transition-all disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingEditEq ? 'Salvando...' : 'Salvar Alterações'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

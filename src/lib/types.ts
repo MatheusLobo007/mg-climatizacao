@@ -208,6 +208,8 @@ export interface Quote {
   issue_date: string;
   valid_until: string;
   subtotal: number;
+  total_services?: number;
+  total_materials?: number;
   discount: number;
   total_amount: number;
   payment_terms?: string | null;
@@ -394,6 +396,7 @@ export interface PMOCPlan {
   customer_id: string;
   responsible_technician: string;
   technician_crea_cft?: string | null;
+  art_rrt_number?: string | null;
   establishment_name: string;
   activity_type: string;
   total_refrigeration_capacity_btu: number;
@@ -402,6 +405,7 @@ export interface PMOCPlan {
   start_date: string;
   valid_until: string;
   emergency_contact?: string | null;
+  emergency_phone?: string | null;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;

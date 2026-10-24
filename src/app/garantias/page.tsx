@@ -19,12 +19,14 @@ import {
   X,
   MessageCircle,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
   getWarrantyTerms,
   getServiceOrders,
   createWarrantyTerm,
+  updateWarrantyTerm,
   deleteWarrantyTerm,
 } from '@/lib/api';
 import { WarrantyTerm, WarrantyType, ServiceOrder } from '@/lib/types';
@@ -44,6 +46,48 @@ export default function GarantiasPage() {
   // Exclusão
   const [itemToDelete, setItemToDelete] = useState<WarrantyTerm | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Edição de Garantia
+  const [editingTerm, setEditingTerm] = useState<WarrantyTerm | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editDurationDays, setEditDurationDays] = useState(90);
+  const [editWarrantyType, setEditWarrantyType] = useState<WarrantyType>('servico');
+  const [editCoverageDetails, setEditCoverageDetails] = useState('');
+  const [editExclusions, setEditExclusions] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+
+  const handleOpenEdit = (term: WarrantyTerm) => {
+    setEditingTerm(term);
+    setEditDurationDays(term.duration_days || 90);
+    setEditWarrantyType(term.warranty_type || 'servico');
+    setEditCoverageDetails(term.coverage_details || '');
+    setEditExclusions(term.exclusions || '');
+    setEditNotes(term.notes || '');
+  };
+
+  const handleUpdateTerm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTerm) return;
+
+    setEditSubmitting(true);
+    try {
+      await updateWarrantyTerm(editingTerm.id, {
+        duration_days: Number(editDurationDays) || 90,
+        warranty_type: editWarrantyType,
+        coverage_details: editCoverageDetails.trim(),
+        exclusions: editExclusions.trim(),
+        notes: editNotes.trim() || undefined,
+      });
+
+      setEditingTerm(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao atualizar garantia:', err);
+      alert(err.message || 'Erro ao salvar alterações no certificado.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
@@ -277,6 +321,13 @@ export default function GarantiasPage() {
                       <span>Ver Certificado Timbrado</span>
                     </Link>
                     <button
+                      onClick={() => handleOpenEdit(term)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                      title="Editar certificado de garantia"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => setItemToDelete(term)}
                       className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
                       title="Excluir certificado de garantia"
@@ -452,6 +503,133 @@ export default function GarantiasPage() {
                   {deleting ? 'Excluindo...' : 'Sim, Excluir'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDITAR CERTIFICADO */}
+        {editingTerm && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="font-bold text-lg text-[#103778] flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-[#0754D8]" />
+                  <span>Editar Termo de Garantia {editingTerm.code}</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setEditingTerm(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateTerm} className="space-y-4 mt-4">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                  <p className="text-slate-600">
+                    Cliente: <strong className="text-slate-800">{editingTerm.customer?.name}</strong>
+                  </p>
+                  {editingTerm.service_order && (
+                    <p className="text-slate-500 mt-0.5">
+                      Ordem de Serviço: <strong className="text-[#0754D8]">{editingTerm.service_order.code}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Tipo e Duração */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Tipo de Cobertura
+                    </label>
+                    <select
+                      value={editWarrantyType}
+                      onChange={(e) => setEditWarrantyType(e.target.value as WarrantyType)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:border-[#0754D8] focus:outline-hidden"
+                    >
+                      <option value="servico">Mão de Obra / Serviço</option>
+                      <option value="equipamento">Equipamento / Aparelho</option>
+                      <option value="peca">Peça / Insumo Substituído</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Duração (Dias)
+                    </label>
+                    <input
+                      type="number"
+                      min="30"
+                      step="30"
+                      required
+                      value={editDurationDays}
+                      onChange={(e) => setEditDurationDays(parseInt(e.target.value, 10) || 90)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-[#0754D8] focus:border-[#0754D8] focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Cobertura */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Itens e Condições Cobertas
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={editCoverageDetails}
+                    onChange={(e) => setEditCoverageDetails(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8] focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Exclusões */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Exclusões e Perda de Garantia
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={editExclusions}
+                    onChange={(e) => setEditExclusions(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8] focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Notas */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Observações Adicionais (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Instruções de uso ou recomendações preventivas"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:border-[#0754D8] focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTerm(null)}
+                    disabled={editSubmitting}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSubmitting}
+                    className="flex-1 py-2.5 rounded-xl bg-[#0754D8] text-white text-sm font-semibold hover:bg-[#0642aa] disabled:opacity-50"
+                  >
+                    {editSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

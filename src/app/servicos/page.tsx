@@ -11,9 +11,11 @@ import {
   Search,
   CheckCircle2,
   Trash2,
+  Edit2,
+  X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getServiceCatalog, createServiceCatalogItem, deleteServiceCatalogItem } from '@/lib/api';
+import { getServiceCatalog, createServiceCatalogItem, updateServiceCatalogItem, deleteServiceCatalogItem } from '@/lib/api';
 import { ServiceCatalogItem, ServiceCategory } from '@/lib/types';
 import { formatCurrency } from '@/lib/formatters';
 
@@ -33,6 +35,48 @@ export default function ServicosPage() {
   const [saving, setSaving] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ServiceCatalogItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modal Editar Serviço
+  const [editingService, setEditingService] = useState<ServiceCatalogItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState<ServiceCategory>('climatizacao');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDefaultPrice, setEditDefaultPrice] = useState('');
+  const [editDurationMin, setEditDurationMin] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleOpenEdit = (s: ServiceCatalogItem) => {
+    setEditingService(s);
+    setEditName(s.name || '');
+    setEditCategory(s.category || 'climatizacao');
+    setEditDescription(s.description || '');
+    setEditDefaultPrice(String(s.default_price || 0));
+    setEditDurationMin(String(s.estimated_duration_min || 60));
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingService || !editName.trim()) return;
+
+    try {
+      setEditSaving(true);
+      await updateServiceCatalogItem(editingService.id, {
+        name: editName.trim(),
+        category: editCategory,
+        description: editDescription.trim() || undefined,
+        default_price: parseFloat(editDefaultPrice) || 0,
+        estimated_duration_min: parseInt(editDurationMin, 10) || 60,
+      });
+
+      setEditingService(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao editar serviço:', err);
+      alert(err.message || 'Erro ao salvar alterações no serviço.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
@@ -228,14 +272,24 @@ export default function ServicosPage() {
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setItemToDelete(s)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
-                    title="Excluir serviço do catálogo"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(s)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                      title="Editar serviço do catálogo"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemToDelete(s)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all active:scale-95"
+                      title="Excluir serviço do catálogo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -404,6 +458,135 @@ export default function ServicosPage() {
                 {deleting ? 'Excluindo...' : 'Sim, Excluir'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR SERVIÇO */}
+      {editingService && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in fade-in duration-150">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-[#103778]">Editar Serviço</h3>
+              <button
+                type="button"
+                onClick={() => setEditingService(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Atualize as informações operacionais e de precificação deste serviço
+            </p>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nome do Serviço *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Ex: Higienização de Ar Split 12.000 BTU"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Categoria
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditCategory('climatizacao')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      editCategory === 'climatizacao'
+                        ? 'bg-[#0754D8] text-white border-[#0754D8]'
+                        : 'bg-white border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <AirVent className="w-3.5 h-3.5" />
+                    <span>Climatização</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditCategory('eletrica')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      editCategory === 'eletrica'
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Elétrica</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Preço Padrão (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editDefaultPrice}
+                    onChange={(e) => setEditDefaultPrice(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Duração Estimada (min)
+                  </label>
+                  <input
+                    type="number"
+                    step="15"
+                    required
+                    value={editDurationMin}
+                    onChange={(e) => setEditDurationMin(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Descrição dos Procedimentos (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Ex: Aplicação de bactericida, limpeza de turbina e serpentina."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingService(null)}
+                  disabled={editSaving}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-md disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {editSaving ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -353,6 +353,31 @@ export async function addCustomerAddress(address: {
   return { id: docRef.id, ...addrData };
 }
 
+export async function updateCustomerAddress(
+  id: string,
+  updates: Partial<CustomerAddress>
+): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'customer_addresses', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar endereço do cliente:', err);
+    return false;
+  }
+}
+
+export async function deleteCustomerAddress(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'customer_addresses', id));
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir endereço do cliente:', err);
+    return false;
+  }
+}
+
 export async function deleteCustomer(id: string): Promise<boolean> {
   try {
     const batch = writeBatch(db);
@@ -481,9 +506,53 @@ export async function createEquipment(payload: {
 export async function updateEquipment(id: string, updates: Partial<Equipment>): Promise<boolean> {
   try {
     const docRef = doc(db, 'equipment', id);
-    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
-    delete (cleanUpdates as any).customer;
-    delete (cleanUpdates as any).address;
+    const cleanUpdates: any = { ...updates, updated_at: new Date().toISOString() };
+    delete cleanUpdates.customer;
+    delete cleanUpdates.address;
+
+    // Se a data de limpeza ou intervalo foi alterado, recalcular next_cleaning_date
+    if (updates.last_cleaning_date !== undefined || updates.maintenance_interval_months !== undefined) {
+      let lastCleaning = updates.last_cleaning_date;
+      let interval = updates.maintenance_interval_months;
+
+      if (!lastCleaning || interval === undefined) {
+        const curSnap = await getDoc(docRef);
+        if (curSnap.exists()) {
+          const curData = curSnap.data() as any;
+          if (!lastCleaning) lastCleaning = curData.last_cleaning_date;
+          if (interval === undefined) interval = curData.maintenance_interval_months || 6;
+        }
+      }
+
+      if (lastCleaning && interval) {
+        const nextDate = calculateNextCleaningDate(lastCleaning, interval);
+        cleanUpdates.next_cleaning_date = nextDate;
+
+        // Sincronizar lembrete pendente existente
+        try {
+          const remSnap = await getDocs(
+            query(
+              collection(db, 'maintenance_reminders'),
+              where('equipment_id', '==', id),
+              where('status', '==', 'pending')
+            )
+          );
+          if (!remSnap.empty) {
+            const batch = writeBatch(db);
+            remSnap.forEach((d) => {
+              batch.update(d.ref, {
+                scheduled_for_date: nextDate,
+                updated_at: new Date().toISOString(),
+              });
+            });
+            await batch.commit();
+          }
+        } catch (remErr) {
+          console.warn('Falha ao atualizar lembretes pendentes ao editar equipamento:', remErr);
+        }
+      }
+    }
+
     await updateDoc(docRef, cleanUpdates);
     return true;
   } catch (err) {
@@ -1315,6 +1384,89 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus): Promis
   }
 }
 
+export async function updateQuote(
+  id: string,
+  payload: {
+    status?: QuoteStatus;
+    category?: ServiceCategory;
+    valid_until?: string;
+    discount?: number;
+    total_amount?: number;
+    payment_terms?: string;
+    execution_time_estimate?: string;
+    warranty_terms?: string;
+    notes?: string;
+    items?: Array<{
+      item_type: 'service' | 'material';
+      catalog_service_id?: string | null;
+      name: string;
+      quantity: number;
+      unit_price: number;
+      total_price?: number;
+    }>;
+  }
+): Promise<boolean> {
+  try {
+    const existing = await getQuoteById(id);
+    if (!existing) return false;
+
+    let totalServices = existing.total_services || 0;
+    let totalMaterials = existing.total_materials || 0;
+
+    if (payload.items) {
+      totalServices = 0;
+      totalMaterials = 0;
+      payload.items.forEach((i) => {
+        const sub = i.quantity * i.unit_price;
+        if (i.item_type === 'service') totalServices += sub;
+        else totalMaterials += sub;
+      });
+
+      const oldItemsSnap = await getDocs(
+        query(collection(db, 'quote_items'), where('quote_id', '==', id))
+      );
+      const batch = writeBatch(db);
+      oldItemsSnap.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+
+      for (const it of payload.items) {
+        await addDoc(collection(db, 'quote_items'), {
+          quote_id: id,
+          item_type: it.item_type,
+          catalog_service_id: it.catalog_service_id || null,
+          name: it.name,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          total_price: it.quantity * it.unit_price,
+        });
+      }
+    }
+
+    const discount = payload.discount !== undefined ? payload.discount : (existing.discount || 0);
+    const totalAmount =
+      payload.total_amount !== undefined
+        ? payload.total_amount
+        : Math.max(0, totalServices + totalMaterials - discount);
+
+    const cleanUpdates: any = {
+      ...payload,
+      total_services: totalServices,
+      total_materials: totalMaterials,
+      total_amount: totalAmount,
+      updated_at: new Date().toISOString(),
+    };
+    delete cleanUpdates.items;
+    delete cleanUpdates.customer;
+    delete cleanUpdates.equipment;
+
+    await updateDoc(doc(db, 'quotes', id), cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar orçamento:', err);
+    return false;
+  }
+}
+
 export async function convertQuoteToServiceOrder(quoteId: string): Promise<ServiceOrder | null> {
   const quote = await getQuoteById(quoteId);
   if (!quote) return null;
@@ -1868,6 +2020,23 @@ export async function deleteFinancialTransaction(id: string): Promise<boolean> {
   }
 }
 
+export async function updateFinancialTransaction(
+  id: string,
+  updates: Partial<FinancialTransaction>
+): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'financial_transactions', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).customer;
+    delete (cleanUpdates as any).service_order;
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar transação financeira:', err);
+    return false;
+  }
+}
+
 export async function getFinancialSummary(filters?: {
   startDate?: string;
   endDate?: string;
@@ -2004,6 +2173,24 @@ export async function deleteWarrantyTerm(id: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Erro ao excluir termo de garantia:', err);
+    return false;
+  }
+}
+
+export async function updateWarrantyTerm(
+  id: string,
+  updates: Partial<WarrantyTerm>
+): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'warranty_terms', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).customer;
+    delete (cleanUpdates as any).service_order;
+    delete (cleanUpdates as any).equipment;
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar termo de garantia:', err);
     return false;
   }
 }
@@ -2155,6 +2342,23 @@ export async function createPMOCPlan(
   }
 
   return (await getPMOCPlanById(planId)) as PMOCPlan;
+}
+
+export async function updatePMOCPlan(
+  id: string,
+  updates: Partial<PMOCPlan>
+): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'pmoc_plans', id);
+    const cleanUpdates = { ...updates, updated_at: new Date().toISOString() };
+    delete (cleanUpdates as any).customer;
+    delete (cleanUpdates as any).equipment_links;
+    await updateDoc(docRef, cleanUpdates);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar plano PMOC:', err);
+    return false;
+  }
 }
 
 export async function deletePMOCPlan(id: string): Promise<boolean> {

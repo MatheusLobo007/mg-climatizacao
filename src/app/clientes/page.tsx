@@ -13,10 +13,13 @@ import {
   ChevronRight,
   Filter,
   Trash2,
+  Edit2,
+  Save,
+  X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { getCustomers, deleteCustomer } from '@/lib/api';
-import { Customer } from '@/lib/types';
+import { getCustomers, deleteCustomer, updateCustomer } from '@/lib/api';
+import { Customer, CustomerStatus } from '@/lib/types';
 import {
   formatPhone,
   getWhatsAppLink,
@@ -29,6 +32,59 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [itemToDelete, setItemToDelete] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modal de Edição de Cliente
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    whatsapp: '',
+    email: '',
+    document_cpf_cnpj: '',
+    origin: '',
+    status: 'active' as CustomerStatus,
+    notes: '',
+  });
+
+  const openEditCustomer = (c: Customer) => {
+    setEditingCustomer(c);
+    setCustomerForm({
+      name: c.name || '',
+      phone: c.phone || '',
+      whatsapp: c.whatsapp || '',
+      email: c.email || '',
+      document_cpf_cnpj: c.document_cpf_cnpj || '',
+      origin: c.origin || 'indicacao',
+      status: c.status || 'active',
+      notes: c.notes || '',
+    });
+  };
+
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomer || !customerForm.name.trim()) return;
+    try {
+      setSavingCustomer(true);
+      await updateCustomer(editingCustomer.id, {
+        name: customerForm.name.trim(),
+        phone: customerForm.phone.trim() || null,
+        whatsapp: customerForm.whatsapp.trim() || null,
+        email: customerForm.email.trim() || null,
+        document_cpf_cnpj: customerForm.document_cpf_cnpj.trim() || null,
+        origin: customerForm.origin.trim() || null,
+        status: customerForm.status,
+        notes: customerForm.notes.trim() || null,
+      });
+      setEditingCustomer(null);
+      await loadCustomers(search);
+    } catch (err: any) {
+      console.error('Erro ao atualizar cliente:', err);
+      alert(err.message || 'Erro ao salvar alterações do cliente.');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
@@ -215,6 +271,14 @@ export default function ClientesPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditCustomer(c)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-[#0754D8] hover:bg-blue-50 border border-slate-200 transition-all active:scale-95"
+                      title="Editar dados cadastrais do cliente"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                     <Link
                       href={`/clientes/${c.id}`}
                       className="inline-flex items-center gap-1 text-xs font-bold text-[#103778] hover:text-[#0754D8] bg-slate-50 hover:bg-[#EAF3FF] px-3 py-2 rounded-xl transition-all"
@@ -250,6 +314,162 @@ export default function ClientesPage() {
             <Plus className="w-4 h-4" />
             <span>Cadastrar Primeiro Cliente</span>
           </Link>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE CLIENTE */}
+      {editingCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-50 text-[#0754D8]">
+                  <Edit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#103778]">Editar Cliente</h3>
+                  <p className="text-xs text-slate-500">Altere contatos e dados sem afetar registros já existentes</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCustomer(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nome Completo / Razão Social *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customerForm.name}
+                  onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                  placeholder="Nome do cliente ou empresa"
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    WhatsApp (Principal)
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.whatsapp}
+                    onChange={(e) => setCustomerForm({ ...customerForm, whatsapp: e.target.value })}
+                    placeholder="(84) 99999-9999"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Telefone Secundário
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.phone}
+                    onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                    placeholder="(84) 3333-3333"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    E-mail
+                  </label>
+                  <input
+                    type="email"
+                    value={customerForm.email}
+                    onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                    placeholder="cliente@email.com"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    CPF ou CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.document_cpf_cnpj}
+                    onChange={(e) => setCustomerForm({ ...customerForm, document_cpf_cnpj: e.target.value })}
+                    placeholder="000.000.000-00"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Origem do Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={customerForm.origin}
+                    onChange={(e) => setCustomerForm({ ...customerForm, origin: e.target.value })}
+                    placeholder="Ex: Indicação, Instagram, Google"
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Status do Cadastro
+                  </label>
+                  <select
+                    value={customerForm.status}
+                    onChange={(e) => setCustomerForm({ ...customerForm, status: e.target.value as CustomerStatus })}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                  >
+                    <option value="active">Ativo (Em atendimento regular)</option>
+                    <option value="archived">Arquivado (Inativo)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Observações Gerais
+                </label>
+                <textarea
+                  rows={3}
+                  value={customerForm.notes}
+                  onChange={(e) => setCustomerForm({ ...customerForm, notes: e.target.value })}
+                  placeholder="Instruções de acesso, preferências do cliente, etc."
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#0754D8]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomer(null)}
+                  disabled={savingCustomer}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCustomer}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#0754D8] hover:bg-[#0642aa] text-white shadow-xs active:scale-95 transition-all disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingCustomer ? 'Salvando...' : 'Salvar Alterações'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

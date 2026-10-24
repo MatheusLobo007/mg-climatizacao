@@ -28,12 +28,14 @@ import {
   BarChart3,
   Percent,
   RotateCcw,
+  Edit2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
   getFinancialTransactions,
   getFinancialSummary,
   createFinancialTransaction,
+  updateFinancialTransaction,
   deleteFinancialTransaction,
 } from '@/lib/api';
 import {
@@ -65,6 +67,63 @@ export default function FinanceiroPage() {
   // Modal de Exclusão
   const [itemToDelete, setItemToDelete] = useState<FinancialTransaction | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modal de Edição de Transação
+  const [editingTx, setEditingTx] = useState<FinancialTransaction | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editFormData, setEditFormData] = useState<{
+    type: FinancialTransactionType;
+    category: FinancialCategory;
+    description: string;
+    amount: number;
+    payment_method: FinancialPaymentMethod;
+    status: 'paid' | 'pending' | 'cancelled';
+    transaction_date: string;
+    notes: string;
+  }>({
+    type: 'expense',
+    category: 'combustivel',
+    description: '',
+    amount: 0,
+    payment_method: 'pix',
+    status: 'paid',
+    transaction_date: '',
+    notes: '',
+  });
+
+  const handleOpenEdit = (tx: FinancialTransaction) => {
+    setEditingTx(tx);
+    setEditFormData({
+      type: tx.type || 'expense',
+      category: tx.category || 'outros',
+      description: tx.description || '',
+      amount: tx.amount || 0,
+      payment_method: tx.payment_method || 'pix',
+      status: tx.status || 'paid',
+      transaction_date: tx.transaction_date ? tx.transaction_date.split('T')[0] : '',
+      notes: tx.notes || '',
+    });
+  };
+
+  const handleUpdateTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx || !editFormData.description.trim() || editFormData.amount <= 0) return;
+
+    setEditSubmitting(true);
+    try {
+      await updateFinancialTransaction(editingTx.id, {
+        ...editFormData,
+        amount: Number(editFormData.amount),
+      });
+      setEditingTx(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Erro ao atualizar transação:', err);
+      alert(err.message || 'Erro ao salvar alterações no lançamento.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
 
   const [formData, setFormData] = useState<{
     type: FinancialTransactionType;
@@ -802,14 +861,24 @@ export default function FinanceiroPage() {
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setItemToDelete(tx)}
-                        title="Excluir lançamento"
-                        className="p-2 rounded-xl text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(tx)}
+                          title="Editar lançamento"
+                          className="p-2 rounded-xl text-slate-400 hover:text-[#0754D8] hover:bg-blue-50 transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemToDelete(tx)}
+                          title="Excluir lançamento"
+                          className="p-2 rounded-xl text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1083,6 +1152,245 @@ export default function FinanceiroPage() {
                   {deleting ? 'Excluindo...' : 'Sim, Excluir'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDITAR TRANSAÇÃO */}
+        {editingTx && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="font-bold text-lg text-[#103778] flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-[#0754D8]" />
+                  <span>Editar Lançamento</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateTransaction} className="space-y-4 mt-4">
+                {/* Tipo */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tipo de Lançamento
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditFormData({
+                          ...editFormData,
+                          type: 'expense',
+                          category: 'combustivel',
+                        })
+                      }
+                      className={`py-2 px-3 rounded-xl font-bold border transition-all ${
+                        editFormData.type === 'expense'
+                          ? 'bg-red-50 text-red-700 border-red-300'
+                          : 'bg-white text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      Despesa (-)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditFormData({
+                          ...editFormData,
+                          type: 'income',
+                          category: 'servico_os',
+                        })
+                      }
+                      className={`py-2 px-3 rounded-xl font-bold border transition-all ${
+                        editFormData.type === 'income'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-white text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      Receita (+)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Categoria */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Categoria
+                  </label>
+                  <select
+                    value={editFormData.category}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        category: e.target.value as FinancialCategory,
+                      })
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:border-[#0754D8] focus:outline-hidden"
+                  >
+                    {editFormData.type === 'expense' ? (
+                      <>
+                        <option value="combustivel">Combustível / Rota</option>
+                        <option value="ferramentas">Ferramentas & Acessórios</option>
+                        <option value="refeicao">Alimentação & Refeição</option>
+                        <option value="insumos">Insumos & Peças (Gás, Tubos, etc)</option>
+                        <option value="prolabore">Pró-Labore / Retirada</option>
+                        <option value="aluguel_oficina">Oficina / Instalações</option>
+                        <option value="energia_agua">Energia / Água / Telecom</option>
+                        <option value="outros">Outras Despesas</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="servico_os">Receita de Ordem de Serviço</option>
+                        <option value="outros">Outras Entradas / Aportes</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {/* Descrição */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Descrição do Lançamento *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.description}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, description: e.target.value })
+                    }
+                    placeholder="Ex: Abastecimento Fiorino ou Compra de fluido R410A"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Valor e Data */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Valor (R$) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={editFormData.amount || ''}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          amount: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-[#103778] focus:border-[#0754D8] focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Data da Transação *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={editFormData.transaction_date}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          transaction_date: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Forma de Pagamento e Status */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Forma de Pagamento
+                    </label>
+                    <select
+                      value={editFormData.payment_method}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          payment_method: e.target.value as FinancialPaymentMethod,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:border-[#0754D8] focus:outline-hidden"
+                    >
+                      <option value="pix">Pix</option>
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="cartao_credito">Cartão de Crédito</option>
+                      <option value="cartao_debito">Cartão de Débito</option>
+                      <option value="boleto">Boleto Bancário</option>
+                      <option value="transferencia">Transferência</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Situação
+                    </label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          status: e.target.value as 'paid' | 'pending' | 'cancelled',
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:border-[#0754D8] focus:outline-hidden"
+                    >
+                      <option value="paid">Confirmado / Pago</option>
+                      <option value="pending">Aguardando Pagamento</option>
+                      <option value="cancelled">Cancelado / Estornado</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Observações */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Observações / Comprovante
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.notes}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, notes: e.target.value })
+                    }
+                    placeholder="Ex: Cupom fiscal 9876 ou nota de abastecimento"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#0754D8] focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTx(null)}
+                    disabled={editSubmitting}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSubmitting}
+                    className="flex-1 py-2.5 rounded-xl bg-[#0754D8] text-white text-sm font-semibold hover:bg-[#0642aa] disabled:opacity-50"
+                  >
+                    {editSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
